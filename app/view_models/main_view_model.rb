@@ -158,13 +158,13 @@ module YouFM
         state.selected_device_index = index
       end
 
-      def select_playlist_index(index)
+      def select_playlist_index(index, &on_loaded)
         return if index.nil?
         return if index.negative?
         return if index >= state.playlists.length
 
         state.selected_playlist_index = index
-        load_selected_playlist_tracks
+        load_selected_playlist_tracks(&on_loaded)
       end
 
       def play_selected
@@ -253,20 +253,25 @@ module YouFM
         state.playlists[state.selected_playlist_index]
       end
 
-      def load_selected_playlist_tracks
+      def load_selected_playlist_tracks(&on_loaded)
         playlist = selected_playlist
         return unless playlist
 
-        tracks = source.playlist_tracks(playlist)
-        state.search_query = ''
-        state.search_results = tracks
-        state.selected_index = tracks.empty? ? nil : 0
-        state.tracks_title = "Playlist: #{playlist.name}"
-        update_status(tracks.empty? ? "Playlist is empty: #{playlist.name}" : "Loaded #{tracks.length} tracks from #{playlist.name}")
-      rescue Services::SpotifyClient::AuthenticationError
-        update_status('Connect Spotify first')
-      rescue StandardError => e
-        update_status("Playlist tracks failed: #{friendly_error_message(e)}")
+        Thread.new do
+          tracks = source.playlist_tracks(playlist)
+          state.search_query = ''
+          state.search_results = tracks
+          state.selected_index = tracks.empty? ? nil : 0
+          state.tracks_title = "Playlist: #{playlist.name}"
+          update_status(tracks.empty? ? "Playlist is empty: #{playlist.name}" : "Loaded #{tracks.length} tracks from #{playlist.name}")
+          on_loaded&.call
+        rescue Services::SpotifyClient::AuthenticationError
+          update_status('Connect Spotify first')
+          on_loaded&.call
+        rescue StandardError => e
+          update_status("Playlist tracks failed: #{friendly_error_message(e)}")
+          on_loaded&.call
+        end
       end
 
       def align_selections

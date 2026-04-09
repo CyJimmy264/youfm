@@ -50,8 +50,23 @@ module YouFM
       end
 
       def playlist_tracks(playlist_id, limit: 100)
-        body = get("/playlists/#{playlist_id}/items", limit: limit)
-        Array(body['items']).filter_map do |item|
+        all_items = []
+        path = "/playlists/#{playlist_id}/items"
+        params = { limit: limit }
+
+        loop do
+          body = get(path, params)
+          all_items.concat(Array(body['items']))
+          next_url = body['next']
+          break if next_url.nil? || next_url.empty?
+
+          path_and_query = next_url.sub(base_url, '')
+          next_uri = URI.parse(path_and_query)
+          path = next_uri.path
+          params = URI.decode_www_form(next_uri.query).to_h
+        end
+
+        all_items.filter_map do |item|
           track_payload = item['item'] || item['track']
           next unless track_payload.is_a?(Hash)
           next if track_payload['type'].to_s == 'episode'

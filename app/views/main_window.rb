@@ -1,11 +1,13 @@
 # frozen_string_literal: true
 
+require 'thread'
+
 module YouFM
   module Views
     class MainWindow
       WINDOW_W = 1260
       WINDOW_H = 840
-      REFRESH_MS = 5_000
+      REFRESH_MS = 100
       THEMES = %w[dark light].freeze
 
       def initialize(
@@ -17,6 +19,7 @@ module YouFM
         @theme = theme
         @settings_store = settings_store
         @shutdown_requested = false
+        @render_queue = Queue.new
         build_window
         bind_events
         view_model.bootstrap
@@ -248,7 +251,8 @@ module YouFM
         render_full
       end
 
-      def handle_selection(index)
+      def handle_selection(_index)
+        index = results_list.currentRow
         view_model.select_index(index.to_i)
         render_status
       end
@@ -257,9 +261,9 @@ module YouFM
         view_model.select_device_index(index.to_i)
       end
 
-      def handle_playlist_selection(index)
-        view_model.select_playlist_index(index.to_i)
-        render_full
+      def handle_playlist_selection(_index)
+        index = playlists_list.currentRow
+        view_model.select_playlist_index(index.to_i) { @render_queue.push(:render_full) }
       end
 
       def handle_play_selected
@@ -306,6 +310,11 @@ module YouFM
       def on_tick
         close_if_requested and return if @shutdown_requested
 
+        while !@render_queue.empty?
+          message = @render_queue.pop(true)
+          render_full if message == :render_full
+        end
+
         view_model.refresh_playback
         render_status
       end
@@ -339,25 +348,31 @@ module YouFM
       end
 
       def render_results(state)
+        results_list.block_signals(true)
         results_list.clear
         state.search_results.each do |track|
           results_list.add_item(track.display_label)
         end
         results_list.current_row = state.selected_index if state.selected_index
+        results_list.block_signals(false)
       end
 
       def render_devices(state)
+        device_picker.block_signals(true)
         device_picker.clear
         state.devices.each { |device| device_picker.add_item(device.display_label) }
         device_picker.current_index = state.selected_device_index if state.selected_device_index
+        device_picker.block_signals(false)
       end
 
       def render_playlists(state)
+        playlists_list.block_signals(true)
         playlists_list.clear
         state.playlists.each do |playlist|
           playlists_list.add_item(playlist.display_label)
         end
         playlists_list.current_row = state.selected_playlist_index if state.selected_playlist_index
+        playlists_list.block_signals(false)
       end
 
       def render_queue(state)
