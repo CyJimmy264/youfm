@@ -71,7 +71,6 @@ module YouFM
 
     def apply_qt_identity!
       QApplication.set_application_name('youfm')
-      QApplication.set_desktop_file_name('youfm')
       QApplication.set_application_display_name('YouFM')
       QApplication.set_organization_name('mveynberg')
     end

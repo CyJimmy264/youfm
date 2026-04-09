@@ -7,8 +7,27 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     instance_double(
       YouFM::Services::MusicSources::SpotifySource,
       name: 'Spotify',
-      configured?: true
+      configured?: true,
+      connected?: false,
+      resumable_session?: false
     )
+  end
+
+  it 'bootstraps from a saved session without opening auth flow' do
+    device = YouFM::Models::Device.new(id: 'd1', name: 'MacBook', type: 'Computer', active: true, restricted: false)
+    allow(source).to receive(:resumable_session?).and_return(true)
+    allow(source).to receive(:available_devices).and_return([device])
+    allow(source).to receive(:playlists).and_return([])
+    allow(source).to receive(:queue).and_return([])
+    allow(source).to receive(:current_playback).and_return(
+      YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: nil, playing: false, progress_ms: 0)
+    )
+
+    view_model = described_class.new(source: source)
+    view_model.bootstrap
+
+    expect(view_model.state.devices).to eq([device])
+    expect(view_model.state.auth_status).to eq('Saved session available')
   end
 
   it 'searches and selects the first result' do
@@ -40,5 +59,80 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
 
     view_model.toggle_playback
     expect(source).to have_received(:resume)
+  end
+
+  it 'connects Spotify and refreshes device and playlist state' do
+    device = YouFM::Models::Device.new(id: 'd1', name: 'MacBook', type: 'Computer', active: true, restricted: false)
+    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 10)
+
+    allow(source).to receive(:connect!)
+    allow(source).to receive(:available_devices).and_return([device])
+    allow(source).to receive(:playlists).and_return([playlist])
+    allow(source).to receive(:queue).and_return([])
+    allow(source).to receive(:current_playback).and_return(
+      YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: nil, playing: false, progress_ms: 0)
+    )
+    allow(source).to receive(:connected?).and_return(true)
+
+    view_model = described_class.new(source: source)
+    view_model.connect_spotify
+
+    expect(view_model.state.connected).to be(true)
+    expect(view_model.state.devices).to eq([device])
+    expect(view_model.state.playlists).to eq([playlist])
+  end
+
+  it 'loads selected playlist tracks into the tracks list' do
+    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 10)
+    track = YouFM::Models::Track.new(
+      id: '1',
+      title: 'Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:1',
+      duration_ms: 1
+    )
+    allow(source).to receive(:playlist_tracks).with(playlist).and_return([track])
+
+    view_model = described_class.new(source: source)
+    view_model.state.playlists = [playlist]
+    view_model.select_playlist_index(0)
+
+    expect(view_model.state.search_results).to eq([track])
+    expect(view_model.state.tracks_title).to eq('Playlist: Daily')
+  end
+
+  it 'disconnects Spotify and clears UI state' do
+    allow(source).to receive(:disconnect!)
+    allow(source).to receive(:connected?).and_return(true, false)
+    allow(source).to receive(:configured?).and_return(true)
+
+    view_model = described_class.new(source: source)
+    view_model.state.search_results = [
+      YouFM::Models::Track.new(id: '1', title: 'Track', artists: ['Artist'], album: 'Album', uri: 'spotify:track:1', duration_ms: 1)
+    ]
+    view_model.state.selected_index = 0
+    view_model.state.playing = true
+
+    view_model.disconnect_spotify
+
+    expect(source).to have_received(:disconnect!)
+    expect(view_model.state.connected).to be(false)
+    expect(view_model.state.search_results).to eq([])
+    expect(view_model.state.playing).to be(false)
+  end
+
+  it 'shows a friendly playback error for unavailable devices' do
+    allow(source).to receive(:play_track).and_raise(YouFM::Services::SpotifyClient::PlaybackUnavailableError, 'premium required')
+
+    view_model = described_class.new(source: source)
+    view_model.state.search_results = [
+      YouFM::Models::Track.new(id: '1', title: 'Track', artists: ['Artist'], album: 'Album', uri: 'spotify:track:1', duration_ms: 1)
+    ]
+    view_model.state.selected_index = 0
+
+    view_model.play_selected
+
+    expect(view_model.state.status_message).to include('Spotify playback is unavailable')
   end
 end

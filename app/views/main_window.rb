@@ -3,8 +3,8 @@
 module YouFM
   module Views
     class MainWindow
-      WINDOW_W = 1120
-      WINDOW_H = 760
+      WINDOW_W = 1260
+      WINDOW_H = 840
       REFRESH_MS = 5_000
       THEMES = %w[dark light].freeze
 
@@ -19,9 +19,8 @@ module YouFM
         @shutdown_requested = false
         build_window
         bind_events
-        render
-        view_model.refresh_playback
-        render
+        view_model.bootstrap
+        render_full
       end
 
       def show = window.show
@@ -30,8 +29,9 @@ module YouFM
 
       private
 
-      attr_reader :view_model, :theme, :settings_store, :window, :search_input, :results_list,
-                  :status_label, :device_label, :now_playing_label, :toggle_button, :theme_button,
+      attr_reader :view_model, :theme, :settings_store, :window, :search_input, :results_list, :playlists_list,
+                  :queue_list, :device_picker, :status_label, :auth_label, :device_label, :now_playing_label,
+                  :toggle_button, :theme_button, :connect_button, :disconnect_button, :tracks_title_label,
                   :heartbeat
 
       def build_window
@@ -47,9 +47,10 @@ module YouFM
         root.spacing = 16
 
         root.add_widget(build_header)
+        root.add_layout(build_auth_row)
         root.add_layout(build_search_row)
         root.add_layout(build_actions_row)
-        root.add_widget(build_results_list)
+        root.add_layout(build_content_row)
         root.add_widget(build_footer)
 
         @heartbeat = QTimer.new(window)
@@ -66,6 +67,24 @@ module YouFM
 
           layout.add_widget(build_label(widget, 'hero_title', 'YouFM'))
           layout.add_widget(build_label(widget, 'hero_subtitle', 'Spotify-first desktop player on Ruby + Qt'))
+        end
+      end
+
+      def build_auth_row
+        QHBoxLayout.new.tap do |layout|
+          @connect_button = build_button(window, 'primary_button', 'Connect Spotify')
+          connect_button.connect('clicked') { |_| handle_connect_spotify }
+          layout.add_widget(connect_button)
+
+          @disconnect_button = build_button(window, 'ghost_button', 'Disconnect')
+          disconnect_button.connect('clicked') { |_| handle_disconnect_spotify }
+          layout.add_widget(disconnect_button)
+
+          refresh_button = build_button(window, 'ghost_button', 'Sync Library')
+          refresh_button.connect('clicked') { |_| handle_refresh_library }
+          layout.add_widget(refresh_button)
+
+          layout.add_stretch(1)
         end
       end
 
@@ -104,11 +123,74 @@ module YouFM
         end
       end
 
+      def build_content_row
+        QHBoxLayout.new.tap do |layout|
+          layout.spacing = 16
+          layout.add_widget(build_search_panel, 3)
+          layout.add_widget(build_library_panel, 2)
+        end
+      end
+
+      def build_search_panel
+        QWidget.new(window).tap do |widget|
+          layout = QVBoxLayout.new(widget)
+          layout.set_contents_margins(0, 0, 0, 0)
+          layout.spacing = 8
+          @tracks_title_label = build_label(widget, 'section_label', 'Tracks')
+          layout.add_widget(tracks_title_label)
+          layout.add_widget(build_results_list, 1)
+        end
+      end
+
+      def build_library_panel
+        QWidget.new(window).tap do |widget|
+          layout = QVBoxLayout.new(widget)
+          layout.set_contents_margins(0, 0, 0, 0)
+          layout.spacing = 10
+
+          layout.add_widget(build_label(widget, 'section_label', 'Devices'))
+          layout.add_layout(build_device_row)
+
+          layout.add_widget(build_label(widget, 'section_label', 'Playlists'))
+          layout.add_widget(build_playlists_list, 1)
+
+          playlist_button = build_button(widget, 'ghost_button', 'Play Playlist')
+          playlist_button.connect('clicked') { |_| handle_play_playlist }
+          layout.add_widget(playlist_button)
+
+          layout.add_widget(build_label(widget, 'section_label', 'Queue'))
+          layout.add_widget(build_queue_list, 1)
+        end
+      end
+
+      def build_device_row
+        QHBoxLayout.new.tap do |layout|
+          @device_picker = QComboBox.new(window)
+          device_picker.object_name = 'device_picker'
+          layout.add_widget(device_picker, 1)
+
+          device_button = build_button(window, 'ghost_button', 'Use Device')
+          device_button.connect('clicked') { |_| handle_activate_device }
+          layout.add_widget(device_button)
+        end
+      end
+
       def build_results_list
         @results_list = QListWidget.new(window)
         results_list.object_name = 'results_list'
-        results_list.on(:mouse_double_click) { |_| handle_play_selected }
         results_list
+      end
+
+      def build_playlists_list
+        @playlists_list = QListWidget.new(window)
+        playlists_list.object_name = 'results_list'
+        playlists_list
+      end
+
+      def build_queue_list
+        @queue_list = QListWidget.new(window)
+        queue_list.object_name = 'results_list'
+        queue_list
       end
 
       def build_footer
@@ -116,9 +198,11 @@ module YouFM
           layout = QVBoxLayout.new(widget)
           layout.set_contents_margins(0, 0, 0, 0)
           layout.spacing = 6
+          @auth_label = build_label(widget, 'status_label', '')
           @status_label = build_label(widget, 'status_label', '')
           @device_label = build_label(widget, 'device_label', '')
           @now_playing_label = build_label(widget, 'now_playing_label', '')
+          layout.add_widget(auth_label)
           layout.add_widget(status_label)
           layout.add_widget(device_label)
           layout.add_widget(now_playing_label)
@@ -143,31 +227,69 @@ module YouFM
       def bind_events
         search_input.connect('returnPressed()') { handle_search }
         results_list.connect('currentRowChanged(int)') { |index| handle_selection(index) }
+        results_list.connect('itemDoubleClicked(QListWidgetItem*)') { |_| handle_play_selected }
+        playlists_list.connect('currentRowChanged(int)') { |index| handle_playlist_selection(index) }
+        playlists_list.connect('itemDoubleClicked(QListWidgetItem*)') { |_| handle_play_playlist }
+        device_picker.connect('currentIndexChanged(int)') { |index| handle_device_selection(index) }
+      end
+
+      def handle_connect_spotify
+        view_model.connect_spotify
+        render_full
       end
 
       def handle_search
         view_model.search(search_input.text.to_s)
-        render
+        render_full
+      end
+
+      def handle_disconnect_spotify
+        view_model.disconnect_spotify
+        render_full
       end
 
       def handle_selection(index)
         view_model.select_index(index.to_i)
-        render
+        render_status
+      end
+
+      def handle_device_selection(index)
+        view_model.select_device_index(index.to_i)
+      end
+
+      def handle_playlist_selection(index)
+        view_model.select_playlist_index(index.to_i)
+        render_full
       end
 
       def handle_play_selected
         view_model.play_selected
-        render
+        render_status
+      end
+
+      def handle_activate_device
+        view_model.activate_selected_device
+        render_full
+      end
+
+      def handle_play_playlist
+        view_model.play_selected_playlist
+        render_status
       end
 
       def handle_toggle
         view_model.toggle_playback
-        render
+        render_status
       end
 
       def handle_refresh
         view_model.refresh_playback
-        render
+        render_status
+      end
+
+      def handle_refresh_library
+        view_model.refresh_library
+        render_full
       end
 
       def handle_switch_theme
@@ -176,7 +298,7 @@ module YouFM
         @theme = next_theme
         window.style_sheet = theme.application_stylesheet
         settings_store.write_theme_name(theme.name)
-        render
+        render_full
       rescue StandardError => e
         warn("[youfm] save theme failed: #{e.class}: #{e.message}")
       end
@@ -185,7 +307,7 @@ module YouFM
         close_if_requested and return if @shutdown_requested
 
         view_model.refresh_playback
-        render
+        render_status
       end
 
       def close_if_requested
@@ -193,11 +315,24 @@ module YouFM
         window.close
       end
 
-      def render
+      def render_full
         state = view_model.state
         render_results(state)
+        render_devices(state)
+        render_playlists(state)
+        render_queue(state)
+        render_status
+      end
+
+      def render_status
+        state = view_model.state
+        tracks_title_label.text = state.tracks_title
         toggle_button.text = state.playing ? 'Pause' : 'Resume'
         theme_button.text = "Theme: #{theme.name.upcase}"
+        connect_button.text = state.connected ? 'Spotify Connected' : 'Connect Spotify'
+        connect_button.enabled = !state.connected
+        disconnect_button.enabled = state.connected
+        auth_label.text = "Auth: #{state.auth_status}"
         status_label.text = "Status: #{state.status_message}"
         device_label.text = state.device_name.to_s.empty? ? 'Device: no active device' : "Device: #{state.device_name}"
         now_playing_label.text = "Now: #{state.now_playing}"
@@ -206,10 +341,30 @@ module YouFM
       def render_results(state)
         results_list.clear
         state.search_results.each do |track|
-          item = QListWidgetItem.new(track.display_label)
-          results_list.add_item(item)
+          results_list.add_item(track.display_label)
         end
         results_list.current_row = state.selected_index if state.selected_index
+      end
+
+      def render_devices(state)
+        device_picker.clear
+        state.devices.each { |device| device_picker.add_item(device.display_label) }
+        device_picker.current_index = state.selected_device_index if state.selected_device_index
+      end
+
+      def render_playlists(state)
+        playlists_list.clear
+        state.playlists.each do |playlist|
+          playlists_list.add_item(playlist.display_label)
+        end
+        playlists_list.current_row = state.selected_playlist_index if state.selected_playlist_index
+      end
+
+      def render_queue(state)
+        queue_list.clear
+        state.queue_tracks.each do |track|
+          queue_list.add_item(track.display_label)
+        end
       end
     end
   end

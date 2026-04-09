@@ -17,6 +17,7 @@ module YouFM
           }
 
           QLabel#hero_subtitle,
+          QLabel#section_label,
           QLabel#status_label,
           QLabel#device_label,
           QLabel#now_playing_label {
@@ -58,13 +59,22 @@ module YouFM
             outline: none;
           }
 
+          QComboBox#device_picker {
+            background: #151922;
+            border: 1px solid #232a36;
+            border-radius: 10px;
+            padding: 8px 10px;
+          }
+
           QListWidget#results_list::item {
             padding: 10px;
             border-radius: 8px;
+            color: #f4f6f8;
           }
 
           QListWidget#results_list::item:selected {
             background: #273043;
+            color: #f7fbff;
           }
         QSS
         'light' => <<~QSS
@@ -80,6 +90,7 @@ module YouFM
           }
 
           QLabel#hero_subtitle,
+          QLabel#section_label,
           QLabel#status_label,
           QLabel#device_label,
           QLabel#now_playing_label {
@@ -121,13 +132,22 @@ module YouFM
             outline: none;
           }
 
+          QComboBox#device_picker {
+            background: #fffdf8;
+            border: 1px solid #d4c9b7;
+            border-radius: 10px;
+            padding: 8px 10px;
+          }
+
           QListWidget#results_list::item {
             padding: 10px;
             border-radius: 8px;
+            color: #1a202a;
           }
 
           QListWidget#results_list::item:selected {
             background: #ece1d2;
+            color: #1a202a;
           }
         QSS
       }.freeze

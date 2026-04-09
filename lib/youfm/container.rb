@@ -27,10 +27,24 @@ module YouFM
     def register_defaults
       register(:theme) { Styles::Theme.new(name: config.theme_name) }
       register(:settings_store) { Services::SettingsStore.new }
+      register(:spotify_token_store) { Services::SpotifyTokenStore.new }
+      register(:browser_launcher) { Services::BrowserLauncher.new }
+      register(:spotify_authenticator) do
+        Services::SpotifyAuthenticator.new(
+          client_id: config.spotify_client_id,
+          redirect_uri: config.spotify_redirect_uri,
+          scopes: config.spotify_scopes,
+          accounts_base_url: config.spotify_accounts_base_url,
+          token_store: fetch(:spotify_token_store),
+          browser_launcher: fetch(:browser_launcher)
+        )
+      end
       register(:spotify_client) do
         Services::SpotifyClient.new(
           access_token: config.spotify_access_token,
-          base_url: config.spotify_api_base_url
+          base_url: config.spotify_api_base_url,
+          token_store: fetch(:spotify_token_store),
+          authenticator: fetch(:spotify_authenticator)
         )
       end
       register(:music_source) do
