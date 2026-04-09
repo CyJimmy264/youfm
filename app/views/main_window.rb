@@ -7,7 +7,8 @@ module YouFM
     class MainWindow
       WINDOW_W = 1260
       WINDOW_H = 840
-      REFRESH_MS = 100
+      PLAYBACK_REFRESH_MS = 5_000
+      UI_REFRESH_MS = 100
       THEMES = %w[dark light].freeze
 
       def initialize(
@@ -34,8 +35,7 @@ module YouFM
 
       attr_reader :view_model, :theme, :settings_store, :window, :search_input, :results_list, :playlists_list,
                   :queue_list, :device_picker, :status_label, :auth_label, :device_label, :now_playing_label,
-                  :toggle_button, :theme_button, :connect_button, :disconnect_button, :tracks_title_label,
-                  :heartbeat
+                  :toggle_button, :theme_button, :connect_button, :disconnect_button, :tracks_title_label
 
       def build_window
         @window = QWidget.new do |widget|
@@ -54,12 +54,18 @@ module YouFM
         root.add_layout(build_search_row)
         root.add_layout(build_actions_row)
         root.add_layout(build_content_row)
+        root.add_widget(build_devices_panel)
         root.add_widget(build_footer)
 
-        @heartbeat = QTimer.new(window)
-        heartbeat.interval = REFRESH_MS
-        heartbeat.connect('timeout') { |_| on_tick }
-        heartbeat.start
+        @ui_updater = QTimer.new(window)
+        @ui_updater.interval = UI_REFRESH_MS
+        @ui_updater.connect('timeout') { on_ui_update }
+        @ui_updater.start
+
+        @playback_refresher = QTimer.new(window)
+        @playback_refresher.interval = PLAYBACK_REFRESH_MS
+        @playback_refresher.connect('timeout') { on_playback_refresh }
+        @playback_refresher.start
       end
 
       def build_header
@@ -129,12 +135,13 @@ module YouFM
       def build_content_row
         QHBoxLayout.new.tap do |layout|
           layout.spacing = 16
-          layout.add_widget(build_search_panel, 3)
-          layout.add_widget(build_library_panel, 2)
+          layout.add_widget(build_tracks_panel, 1)
+          layout.add_widget(build_playlists_panel, 1)
+          layout.add_widget(build_queue_panel, 1)
         end
       end
 
-      def build_search_panel
+      def build_tracks_panel
         QWidget.new(window).tap do |widget|
           layout = QVBoxLayout.new(widget)
           layout.set_contents_margins(0, 0, 0, 0)
@@ -145,14 +152,11 @@ module YouFM
         end
       end
 
-      def build_library_panel
+      def build_playlists_panel
         QWidget.new(window).tap do |widget|
           layout = QVBoxLayout.new(widget)
           layout.set_contents_margins(0, 0, 0, 0)
           layout.spacing = 10
-
-          layout.add_widget(build_label(widget, 'section_label', 'Devices'))
-          layout.add_layout(build_device_row)
 
           layout.add_widget(build_label(widget, 'section_label', 'Playlists'))
           layout.add_widget(build_playlists_list, 1)
@@ -160,9 +164,26 @@ module YouFM
           playlist_button = build_button(widget, 'ghost_button', 'Play Playlist')
           playlist_button.connect('clicked') { |_| handle_play_playlist }
           layout.add_widget(playlist_button)
+        end
+      end
 
+      def build_queue_panel
+        QWidget.new(window).tap do |widget|
+          layout = QVBoxLayout.new(widget)
+          layout.set_contents_margins(0, 0, 0, 0)
+          layout.spacing = 10
           layout.add_widget(build_label(widget, 'section_label', 'Queue'))
           layout.add_widget(build_queue_list, 1)
+        end
+      end
+
+      def build_devices_panel
+        QWidget.new(window).tap do |widget|
+          layout = QVBoxLayout.new(widget)
+          layout.set_contents_margins(0, 0, 0, 0)
+          layout.spacing = 10
+          layout.add_widget(build_label(widget, 'section_label', 'Devices'))
+          layout.add_layout(build_device_row)
         end
       end
 
@@ -307,20 +328,23 @@ module YouFM
         warn("[youfm] save theme failed: #{e.class}: #{e.message}")
       end
 
-      def on_tick
+      def on_ui_update
         close_if_requested and return if @shutdown_requested
 
         while !@render_queue.empty?
           message = @render_queue.pop(true)
           render_full if message == :render_full
         end
+      end
 
+      def on_playback_refresh
         view_model.refresh_playback
         render_status
       end
 
       def close_if_requested
-        heartbeat.stop if heartbeat.is_active
+        @ui_updater.stop if @ui_updater.active?
+        @playback_refresher.stop if @playback_refresher.active?
         window.close
       end
 
