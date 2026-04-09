@@ -4,7 +4,7 @@ module YouFM
   class Configuration
     attr_accessor :environment, :theme_name, :spotify_api_base_url, :spotify_accounts_base_url,
                   :spotify_access_token, :spotify_client_id, :spotify_redirect_uri, :spotify_scopes,
-                  :enable_reloading
+                  :enable_reloading, :lastfm_api_key, :lastfm_secret
 
     def initialize(environment: 'development')
       @environment = environment
@@ -22,6 +22,8 @@ module YouFM
         playlist-read-collaborative
       ]
       @enable_reloading = environment == 'development'
+      @lastfm_api_key = ''
+      @lastfm_secret = ''
     end
   end
 end

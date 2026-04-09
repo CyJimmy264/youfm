@@ -34,8 +34,9 @@ module YouFM
       private
 
       attr_reader :view_model, :theme, :settings_store, :window, :search_input, :results_list, :playlists_list,
-                  :queue_list, :device_picker, :status_label, :auth_label, :device_label, :now_playing_label,
-                  :toggle_button, :theme_button, :connect_button, :disconnect_button, :tracks_title_label
+                  :queue_list, :device_picker, :status_label, :auth_label, :lastfm_auth_label, :device_label, :now_playing_label,
+                  :toggle_button, :theme_button, :connect_button, :disconnect_button, :connect_lastfm_button,
+                  :disconnect_lastfm_button, :tracks_title_label
 
       def build_window
         @window = QWidget.new do |widget|
@@ -88,6 +89,12 @@ module YouFM
           @disconnect_button = build_button(window, 'ghost_button', 'Disconnect')
           disconnect_button.connect('clicked') { |_| handle_disconnect_spotify }
           layout.add_widget(disconnect_button)
+
+          @connect_lastfm_button = build_button(window, 'primary_button', 'Connect Last.fm')
+          @disconnect_lastfm_button = build_button(window, 'ghost_button', 'Disconnect')
+
+          layout.add_widget(connect_lastfm_button)
+          layout.add_widget(disconnect_lastfm_button)
 
           refresh_button = build_button(window, 'ghost_button', 'Sync Library')
           refresh_button.connect('clicked') { |_| handle_refresh_library }
@@ -223,10 +230,12 @@ module YouFM
           layout.set_contents_margins(0, 0, 0, 0)
           layout.spacing = 6
           @auth_label = build_label(widget, 'status_label', '')
+          @lastfm_auth_label = build_label(widget, 'status_label', '')
           @status_label = build_label(widget, 'status_label', '')
           @device_label = build_label(widget, 'device_label', '')
           @now_playing_label = build_label(widget, 'now_playing_label', '')
           layout.add_widget(auth_label)
+          layout.add_widget(lastfm_auth_label)
           layout.add_widget(status_label)
           layout.add_widget(device_label)
           layout.add_widget(now_playing_label)
@@ -255,10 +264,17 @@ module YouFM
         playlists_list.connect('currentRowChanged(int)') { |index| handle_playlist_selection(index) }
         playlists_list.connect('itemDoubleClicked(QListWidgetItem*)') { |_| handle_play_playlist }
         device_picker.connect('currentIndexChanged(int)') { |index| handle_device_selection(index) }
+        connect_lastfm_button.connect('clicked') { |_| handle_connect_lastfm }
+        disconnect_lastfm_button.connect('clicked') { |_| handle_disconnect_lastfm }
       end
 
       def handle_connect_spotify
         view_model.connect_spotify
+        render_full
+      end
+
+      def handle_connect_lastfm
+        view_model.connect_lastfm
         render_full
       end
 
@@ -269,6 +285,11 @@ module YouFM
 
       def handle_disconnect_spotify
         view_model.disconnect_spotify
+        render_full
+      end
+
+      def handle_disconnect_lastfm
+        view_model.disconnect_lastfm
         render_full
       end
 
@@ -339,6 +360,7 @@ module YouFM
 
       def on_playback_refresh
         view_model.refresh_playback
+        render_queue(view_model.state)
         render_status
       end
 
@@ -365,7 +387,11 @@ module YouFM
         connect_button.text = state.connected ? 'Spotify Connected' : 'Connect Spotify'
         connect_button.enabled = !state.connected
         disconnect_button.enabled = state.connected
+        connect_lastfm_button.text = state.lastfm_connected ? 'Last.fm Connected' : 'Connect Last.fm'
+        connect_lastfm_button.enabled = !state.lastfm_connected
+        disconnect_lastfm_button.enabled = state.lastfm_connected
         auth_label.text = "Auth: #{state.auth_status}"
+        lastfm_auth_label.text = "Last.fm Auth: #{state.lastfm_auth_status}"
         status_label.text = "Status: #{state.status_message}"
         device_label.text = state.device_name.to_s.empty? ? 'Device: no active device' : "Device: #{state.device_name}"
         now_playing_label.text = "Now: #{state.now_playing}"

@@ -50,9 +50,35 @@ module YouFM
       register(:music_source) do
         Services::MusicSources::SpotifySource.new(client: fetch(:spotify_client))
       end
+      register(:lastfm_token_store) { Services::LastfmTokenStore.new }
+      register(:lastfm_client) do
+        session_data = fetch(:lastfm_token_store).load
+        Services::LastfmClient.new(
+          api_key: config.lastfm_api_key,
+          secret: config.lastfm_secret,
+          session_key: session_data['key']
+        )
+      end
+      register(:lastfm_authenticator) do
+        Services::LastfmAuthenticator.new(
+          api_key: config.lastfm_api_key,
+          secret: config.lastfm_secret,
+          lastfm_client: fetch(:lastfm_client),
+          token_store: fetch(:lastfm_token_store),
+          browser_launcher: fetch(:browser_launcher)
+        )
+      end
+      register(:recommendation_generator) do
+        Services::RecommendationGenerator.new(
+          lastfm_client: fetch(:lastfm_client),
+          spotify_client: fetch(:spotify_client)
+        )
+      end
       register(:main_view_model) do
         ViewModels::MainViewModel.new(
-          source: fetch(:music_source)
+          source: fetch(:music_source),
+          recommendation_generator: fetch(:recommendation_generator),
+          lastfm_authenticator: fetch(:lastfm_authenticator)
         )
       end
       register(:main_window) do

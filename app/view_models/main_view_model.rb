@@ -8,6 +8,8 @@ module YouFM
         :configured,
         :connected,
         :auth_status,
+        :lastfm_connected,
+        :lastfm_auth_status,
         :tracks_title,
         :search_query,
         :search_results,
@@ -24,13 +26,17 @@ module YouFM
         keyword_init: true
       )
 
-      def initialize(source:)
+      def initialize(source:, recommendation_generator:, lastfm_authenticator:)
         @source = source
+        @recommendation_generator = recommendation_generator
+        @lastfm_authenticator = lastfm_authenticator
         @state = State.new(
           source_name: source.name,
           configured: source.configured?,
           connected: source.connected?,
           auth_status: initial_auth_status,
+          lastfm_connected: lastfm_connected?,
+          lastfm_auth_status: initial_lastfm_auth_status,
           tracks_title: 'Tracks',
           search_query: '',
           search_results: [],
@@ -51,6 +57,7 @@ module YouFM
 
       def bootstrap
         sync_connection_state!
+        sync_lastfm_connection_state!
         return update_status(initial_status) unless source.resumable_session?
 
         refresh_library
@@ -74,6 +81,18 @@ module YouFM
         update_status("Spotify auth failed: #{e.message}")
       end
 
+      def connect_lastfm
+        lastfm_authenticator.connect!
+        sync_lastfm_connection_state!
+        update_status('Last.fm authorization completed')
+      rescue Services::LastfmAuthenticator::CallbackTimeoutError
+        update_status('Timed out waiting for Last.fm authorization callback')
+      rescue Services::LastfmAuthenticator::Error => e
+        update_status("Last.fm auth failed: #{e.message}")
+      rescue StandardError => e
+        update_status("Last.fm auth failed: #{e.message}")
+      end
+
       def disconnect_spotify
         source.disconnect!
         state.devices = []
@@ -91,6 +110,14 @@ module YouFM
         update_status('Spotify session cleared')
       rescue StandardError => e
         update_status("Disconnect failed: #{e.message}")
+      end
+
+      def disconnect_lastfm
+        lastfm_authenticator.disconnect!
+        sync_lastfm_connection_state!
+        update_status('Last.fm session cleared')
+      rescue StandardError => e
+        update_status("Last.fm disconnect failed: #{e.message}")
       end
 
       def search(query)
@@ -172,6 +199,7 @@ module YouFM
         return update_status('Select a track first') unless track
 
         source.play_track(track)
+        Thread.new { enqueue_recommendation }
         state.playing = true
         state.now_playing = "Playing: #{track.display_label}"
         update_status('Playback command sent to Spotify')
@@ -233,7 +261,7 @@ module YouFM
 
       private
 
-      attr_reader :source
+      attr_reader :source, :recommendation_generator, :lastfm_authenticator
 
       def selected_track
         return nil if state.selected_index.nil?
@@ -251,6 +279,15 @@ module YouFM
         return nil if state.selected_playlist_index.nil?
 
         state.playlists[state.selected_playlist_index]
+      end
+
+      def enqueue_recommendation
+        seed_tracks = state.search_results
+        recommended_track = recommendation_generator.generate_from_playlist(seed_tracks)
+        return unless recommended_track
+
+        state.queue_tracks.push(recommended_track)
+        update_status("Added recommendation to queue: #{recommended_track.display_label}")
       end
 
       def load_selected_playlist_tracks(&on_loaded)
@@ -299,6 +336,13 @@ module YouFM
         'Spotify OAuth is not configured'
       end
 
+      def initial_lastfm_auth_status
+        return 'Connected to Last.fm' if lastfm_connected?
+        return 'Ready to connect Last.fm' if lastfm_configured?
+
+        'Last.fm is not configured'
+      end
+
       def sync_connection_state!
         state.configured = source.configured?
         state.connected = source.connected?
@@ -312,6 +356,26 @@ module YouFM
           else
             'OAuth is not configured'
           end
+      end
+
+      def sync_lastfm_connection_state!
+        state.lastfm_connected = lastfm_connected?
+        state.lastfm_auth_status =
+          if lastfm_connected?
+            'Connected to Last.fm'
+          elsif lastfm_configured?
+            'Ready to connect Last.fm'
+          else
+            'Last.fm is not configured'
+          end
+      end
+
+      def lastfm_connected?
+        lastfm_authenticator.connected?
+      end
+
+      def lastfm_configured?
+        lastfm_authenticator.configured?
       end
 
       def friendly_error_message(error)
