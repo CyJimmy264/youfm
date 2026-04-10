@@ -188,4 +188,116 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     expect(view_model.state.queue_tracks).to include(recommended_track)
     expect(source).to have_received(:add_to_queue).with(recommended_track)
   end
+
+  it 'refreshes queue without reintroducing the currently playing track' do
+    old_track = YouFM::Models::Track.new(
+      id: 'old-track',
+      title: 'Old Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:old-track',
+      duration_ms: 1
+    )
+    next_track = YouFM::Models::Track.new(
+      id: 'next-track',
+      title: 'Next Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:next-track',
+      duration_ms: 1
+    )
+
+    allow(source).to receive(:current_playback).and_return(
+      YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: old_track, playing: true, progress_ms: 0)
+    )
+    allow(source).to receive(:queue).and_return([old_track, next_track])
+    allow(recommendation_generator).to receive(:generate_from_playlist).and_return(nil)
+
+    view_model = build_view_model
+    view_model.state.search_results = [old_track]
+
+    view_model.refresh_playback
+    view_model.refresh_queue
+
+    expect(view_model.state.queue_tracks).to eq([next_track])
+  end
+
+  it 'generates the next recommendation when Spotify playback changes tracks' do
+    current_track = YouFM::Models::Track.new(
+      id: '1',
+      title: 'Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:1',
+      duration_ms: 1
+    )
+    next_track = YouFM::Models::Track.new(
+      id: '2',
+      title: 'Next Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:2',
+      duration_ms: 1
+    )
+    recommended_track = YouFM::Models::Track.new(
+      id: '3',
+      title: 'Recommended',
+      artists: ['Another Artist'],
+      album: 'Album 2',
+      uri: 'spotify:track:3',
+      duration_ms: 1
+    )
+
+    allow(source).to receive(:current_playback).and_return(
+      YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: current_track, playing: true, progress_ms: 0),
+      YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: next_track, playing: true, progress_ms: 0)
+    )
+    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 2)
+    allow(source).to receive(:add_to_queue).with(recommended_track)
+    allow(recommendation_generator).to receive(:generate_from_playlist).and_return(nil, recommended_track)
+
+    view_model = build_view_model
+    view_model.state.playlists = [playlist]
+    view_model.state.selected_playlist_index = 0
+    view_model.state.search_results = [current_track, next_track]
+
+    view_model.refresh_playback
+    view_model.refresh_playback
+
+    expect(source).to have_received(:add_to_queue).with(recommended_track).once
+    expect(view_model.state.queue_tracks).to include(recommended_track)
+  end
+
+  it 'surfaces when auto-recommendation could not find a suitable track' do
+    current_track = YouFM::Models::Track.new(
+      id: '1',
+      title: 'Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:1',
+      duration_ms: 1
+    )
+    next_track = YouFM::Models::Track.new(
+      id: '2',
+      title: 'Next Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:2',
+      duration_ms: 1
+    )
+
+    allow(source).to receive(:current_playback).and_return(
+      YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: current_track, playing: true, progress_ms: 0),
+      YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: next_track, playing: true, progress_ms: 0)
+    )
+    allow(recommendation_generator).to receive(:generate_from_playlist).and_return(nil)
+
+    view_model = build_view_model
+    view_model.state.search_results = [current_track, next_track]
+
+    view_model.refresh_playback
+    view_model.refresh_playback
+
+    expect(view_model.state.status_message).to eq('Auto-recommendation skipped: Last.fm/Spotify did not return a suitable track')
+  end
 end
