@@ -36,7 +36,7 @@ module YouFM
       attr_reader :view_model, :theme, :settings_store, :window, :search_input, :results_list, :playlists_list,
                   :queue_list, :device_picker, :status_label, :auth_label, :lastfm_auth_label, :device_label, :now_playing_label,
                   :toggle_button, :theme_button, :connect_button, :disconnect_button, :connect_lastfm_button,
-                  :disconnect_lastfm_button, :tracks_title_label
+                  :disconnect_lastfm_button, :tracks_title_label, :next_button
 
       def build_window
         @window = QWidget.new do |widget|
@@ -126,6 +126,9 @@ module YouFM
           @toggle_button = build_button(window, 'ghost_button', 'Resume')
           toggle_button.connect('clicked') { |_| handle_toggle }
           layout.add_widget(toggle_button)
+
+          @next_button = build_button(window, 'ghost_button', 'Next')
+          layout.add_widget(next_button)
 
           refresh_button = build_button(window, 'ghost_button', 'Refresh')
           refresh_button.connect('clicked') { |_| handle_refresh }
@@ -263,9 +266,12 @@ module YouFM
         results_list.connect('itemDoubleClicked(QListWidgetItem*)') { |_| handle_play_selected }
         playlists_list.connect('currentRowChanged(int)') { |index| handle_playlist_selection(index) }
         playlists_list.connect('itemDoubleClicked(QListWidgetItem*)') { |_| handle_play_playlist }
+        queue_list.connect('currentRowChanged(int)') { |index| handle_queue_selection(index) }
+        queue_list.connect('itemDoubleClicked(QListWidgetItem*)') { |_| handle_play_queued }
         device_picker.connect('currentIndexChanged(int)') { |index| handle_device_selection(index) }
         connect_lastfm_button.connect('clicked') { |_| handle_connect_lastfm }
         disconnect_lastfm_button.connect('clicked') { |_| handle_disconnect_lastfm }
+        next_button.connect('clicked') { |_| handle_skip_to_next }
       end
 
       def handle_connect_spotify
@@ -299,6 +305,12 @@ module YouFM
         render_status
       end
 
+      def handle_queue_selection(_index)
+        index = queue_list.currentRow
+        view_model.select_queue_index(index.to_i)
+        render_status
+      end
+
       def handle_device_selection(index)
         view_model.select_device_index(index.to_i)
       end
@@ -310,6 +322,11 @@ module YouFM
 
       def handle_play_selected
         view_model.play_selected
+        render_status
+      end
+
+      def handle_play_queued
+        view_model.play_selected_queued_track
         render_status
       end
 
@@ -325,6 +342,11 @@ module YouFM
 
       def handle_toggle
         view_model.toggle_playback
+        render_status
+      end
+
+      def handle_skip_to_next
+        view_model.skip_to_next
         render_status
       end
 
@@ -360,8 +382,8 @@ module YouFM
 
       def on_playback_refresh
         view_model.refresh_playback
-        render_queue(view_model.state)
-        render_status
+        view_model.refresh_queue
+        @render_queue.push(:render_full)
       end
 
       def close_if_requested
@@ -426,10 +448,13 @@ module YouFM
       end
 
       def render_queue(state)
+        queue_list.block_signals(true)
         queue_list.clear
         state.queue_tracks.each do |track|
           queue_list.add_item(track.display_label)
         end
+        queue_list.current_row = state.selected_queue_index if state.selected_queue_index
+        queue_list.block_signals(false)
       end
     end
   end

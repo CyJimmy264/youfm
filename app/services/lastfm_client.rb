@@ -28,7 +28,7 @@ module YouFM
       end
 
       def get_similar_artists(artist_name, limit: 10)
-        body = get(method: 'artist.getSimilar', artist: artist_name, limit: limit, signed: true)
+        body = get({method: 'artist.getSimilar', artist: artist_name, limit: limit}, signed: true)
         artists = body.dig('similarartists', 'artist') || []
         artists.map do |artist_data|
           SimilarArtist.new(
@@ -39,7 +39,7 @@ module YouFM
       end
 
       def get_top_tracks(artist_name, limit: 10, period: '12month')
-        body = get(method: 'artist.getTopTracks', artist: artist_name, limit: limit, period: period, signed: true)
+        body = get({method: 'artist.getTopTracks', artist: artist_name, limit: limit, period: period}, signed: true)
         tracks = body.dig('toptracks', 'track') || []
         tracks.map do |track_data|
           TopTrack.new(

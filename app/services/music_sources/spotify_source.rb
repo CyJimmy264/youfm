@@ -58,6 +58,10 @@ module YouFM
           client.play_track(track.uri)
         end
 
+        def add_to_queue(track)
+          client.add_to_queue(track.uri)
+        end
+
         def play_playlist(playlist, device_id: nil)
           client.play_playlist(playlist.uri, device_id:)
         end
@@ -72,6 +76,10 @@ module YouFM
 
         def resume
           client.resume
+        end
+
+        def skip_to_next
+          client.skip_to_next
         end
 
         private

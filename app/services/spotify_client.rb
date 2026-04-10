@@ -41,7 +41,10 @@ module YouFM
 
       def queue
         body = get('/me/player/queue')
-        Array(body['queue']).map { |item| build_track(item) }
+        currently_playing_id = body.dig('currently_playing', 'id')
+        queue_items = Array(body['queue']).reject { |item| item['id'] == currently_playing_id }
+        tracks = queue_items.map { |item| build_track(item) }
+        tracks.uniq(&:id)
       end
 
       def current_user_playlists(limit: 30)
@@ -84,6 +87,10 @@ module YouFM
         put('/me/player/play', { context_uri: playlist_uri }, params:)
       end
 
+      def add_to_queue(track_uri)
+        post('/me/player/add-to-queue', uri: track_uri)
+      end
+
       def transfer_playback(device_id, play: false)
         put('/me/player', { device_ids: [device_id], play: play })
       end
@@ -94,6 +101,10 @@ module YouFM
 
       def pause
         put('/me/player/pause', {})
+      end
+
+      def skip_to_next
+        post('/me/player/next')
       end
 
       def connect!
@@ -169,11 +180,17 @@ module YouFM
       end
 
       def put(path, payload, params: {})
-        request(
+        body, = request(
           Net::HTTP::Put.new(build_uri(path, params)).tap do |request|
             request.body = JSON.dump(payload)
           end
         )
+        body
+      end
+
+      def post(path, params = {})
+        body, = request(Net::HTTP::Post.new(build_uri(path, params)))
+        body
       end
 
       def build_uri(path, params = {})
@@ -203,6 +220,8 @@ module YouFM
         return [{}, 204] if code == 204 || body.strip.empty?
 
         [JSON.parse(body), code]
+      rescue JSON::ParserError
+        [{}, code]
       end
 
       def ensure_token!

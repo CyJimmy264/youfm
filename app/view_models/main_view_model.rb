@@ -19,6 +19,7 @@ module YouFM
         :playlists,
         :selected_playlist_index,
         :queue_tracks,
+        :selected_queue_index,
         :status_message,
         :device_name,
         :now_playing,
@@ -30,6 +31,7 @@ module YouFM
         @source = source
         @recommendation_generator = recommendation_generator
         @lastfm_authenticator = lastfm_authenticator
+        @queue_mutex = Mutex.new
         @state = State.new(
           source_name: source.name,
           configured: source.configured?,
@@ -46,6 +48,7 @@ module YouFM
           playlists: [],
           selected_playlist_index: nil,
           queue_tracks: [],
+          selected_queue_index: nil,
           status_message: initial_status,
           device_name: nil,
           now_playing: 'No active playback',
@@ -152,7 +155,7 @@ module YouFM
       def refresh_library
         state.devices = source.available_devices
         state.playlists = source.playlists
-        state.queue_tracks = source.queue
+        refresh_queue
         refresh_playback
         align_selections
         update_status('Spotify library updated')
@@ -192,6 +195,14 @@ module YouFM
 
         state.selected_playlist_index = index
         load_selected_playlist_tracks(&on_loaded)
+      end
+
+      def select_queue_index(index)
+        return if index.nil?
+        return if index.negative?
+        return if index >= state.queue_tracks.length
+
+        state.selected_queue_index = index
       end
 
       def play_selected
@@ -241,6 +252,23 @@ module YouFM
         update_status("Playlist playback failed: #{friendly_error_message(e)}")
       end
 
+      def play_selected_queued_track
+        track = selected_queued_track
+        return update_status('Select a track from the queue first') unless track
+
+        source.play_track(track)
+        Thread.new { enqueue_recommendation }
+        state.playing = true
+        state.now_playing = "Playing: #{track.display_label}"
+        update_status('Playback command sent to Spotify')
+      rescue Services::SpotifyClient::AuthenticationError
+        update_status('Connect Spotify first')
+      rescue Services::SpotifyClient::PlaybackUnavailableError, Services::SpotifyClient::DeviceUnavailableError => e
+        update_status(friendly_error_message(e))
+      rescue StandardError => e
+        update_status("Play failed: #{friendly_error_message(e)}")
+      end
+
       def toggle_playback
         if state.playing
           source.pause
@@ -257,6 +285,19 @@ module YouFM
         update_status(friendly_error_message(e))
       rescue StandardError => e
         update_status("Playback toggle failed: #{friendly_error_message(e)}")
+      end
+
+      def skip_to_next
+        source.skip_to_next
+        sleep 0.5 # Give Spotify a moment to update
+        refresh_playback
+        update_status('Skip command sent to Spotify')
+      rescue Services::SpotifyClient::AuthenticationError
+        update_status('Connect Spotify first')
+      rescue Services::SpotifyClient::PlaybackUnavailableError, Services::SpotifyClient::DeviceUnavailableError => e
+        update_status(friendly_error_message(e))
+      rescue StandardError => e
+        update_status("Skip failed: #{friendly_error_message(e)}")
       end
 
       private
@@ -281,13 +322,29 @@ module YouFM
         state.playlists[state.selected_playlist_index]
       end
 
+      def selected_queued_track
+        return nil if state.selected_queue_index.nil?
+
+        state.queue_tracks[state.selected_queue_index]
+      end
+
+      def refresh_queue
+        @queue_mutex.synchronize do
+          state.queue_tracks = source.queue
+        end
+      end
+
       def enqueue_recommendation
         seed_tracks = state.search_results
         recommended_track = recommendation_generator.generate_from_playlist(seed_tracks)
         return unless recommended_track
 
-        state.queue_tracks.push(recommended_track)
-        update_status("Added recommendation to queue: #{recommended_track.display_label}")
+        # Prevent adding a recommendation if it's already in the queue
+        return if state.queue_tracks.any? { |track| track.id == recommended_track.id }
+
+        source.add_to_queue(recommended_track)
+        refresh_queue
+        update_status("Added recommendation to Spotify queue: #{recommended_track.display_label}")
       end
 
       def load_selected_playlist_tracks(&on_loaded)
