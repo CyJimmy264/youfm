@@ -189,6 +189,37 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     expect(source).to have_received(:add_to_queue).with(recommended_track)
   end
 
+  it 'can manually add a generated recommendation to the queue' do
+    current_track = YouFM::Models::Track.new(
+      id: '1',
+      title: 'Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:1',
+      duration_ms: 1
+    )
+    recommended_track = YouFM::Models::Track.new(
+      id: '2',
+      title: 'Recommended',
+      artists: ['Another Artist'],
+      album: 'Album 2',
+      uri: 'spotify:track:2',
+      duration_ms: 1
+    )
+
+    allow(source).to receive(:add_to_queue).with(recommended_track)
+    allow(recommendation_generator).to receive(:generate_from_playlist).and_return(recommended_track)
+
+    view_model = build_view_model
+    view_model.state.search_results = [current_track]
+
+    view_model.generate_recommendation
+
+    expect(source).to have_received(:add_to_queue).with(recommended_track)
+    expect(view_model.state.queue_tracks).to include(recommended_track)
+    expect(view_model.state.status_message).to include('Added recommendation to Spotify queue')
+  end
+
   it 'refreshes queue without reintroducing the currently playing track' do
     old_track = YouFM::Models::Track.new(
       id: 'old-track',
@@ -210,7 +241,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     allow(source).to receive(:current_playback).and_return(
       YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: old_track, playing: true, progress_ms: 0)
     )
-    allow(source).to receive(:queue).and_return([old_track, next_track])
+    allow(source).to receive(:queue).and_return([next_track])
     allow(recommendation_generator).to receive(:generate_from_playlist).and_return(nil)
 
     view_model = build_view_model

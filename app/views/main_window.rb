@@ -130,6 +130,10 @@ module YouFM
           @next_button = build_button(window, 'ghost_button', 'Next')
           layout.add_widget(next_button)
 
+          generate_button = build_button(window, 'ghost_button', 'Generate Next')
+          generate_button.connect('clicked') { |_| handle_generate_recommendation }
+          layout.add_widget(generate_button)
+
           refresh_button = build_button(window, 'ghost_button', 'Refresh')
           refresh_button.connect('clicked') { |_| handle_refresh }
           layout.add_widget(refresh_button)
@@ -347,6 +351,11 @@ module YouFM
 
       def handle_skip_to_next
         view_model.skip_to_next
+        render_status
+      end
+
+      def handle_generate_recommendation
+        view_model.generate_recommendation
         render_status
       end
 

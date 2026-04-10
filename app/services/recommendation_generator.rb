@@ -7,6 +7,7 @@ module YouFM
     class RecommendationGenerator
       SIMILAR_ARTIST_WINDOW_SIZE = 10
       TOP_TRACK_WINDOW_SIZE = 7
+      TOP_TRACK_ATTEMPTS_PER_ARTIST = 3
 
       def initialize(lastfm_client:, spotify_client:)
         @lastfm_client = lastfm_client
@@ -29,10 +30,14 @@ module YouFM
             top_tracks = @lastfm_client.get_top_tracks(similar_artist.name, period: '12month', limit: 20)
             next if top_tracks.empty?
 
-            top_tracks.first(TOP_TRACK_WINDOW_SIZE).shuffle.each do |top_track|
+            top_tracks.shuffle.take([TOP_TRACK_WINDOW_SIZE, TOP_TRACK_ATTEMPTS_PER_ARTIST].min).each do |top_track|
               query = "#{top_track.name} artist:#{similar_artist.name}"
-              spotify_tracks = @spotify_client.search_tracks(query, limit: 3)
-              candidate = spotify_tracks.find { |track| !blocked_track_ids.include?(track.id.to_s) }
+              spotify_tracks = @spotify_client.search_tracks(query, limit: 10)
+              candidate = spotify_tracks.find do |track|
+                next false if blocked_track_ids.include?(track.id.to_s)
+
+                spotify_track_matches?(track, generated_artist_name: similar_artist.name, generated_title: top_track.name)
+              end
               if candidate
                 puts "[youfm] recommendation generated: playlist=#{playlist_name || 'unknown'} seed=#{seed_track.display_label.inspect} result=#{candidate.display_label.inspect}"
                 return candidate
@@ -58,6 +63,19 @@ module YouFM
         window = similar_artists.rotate(offset).first(window_size)
         puts "[youfm] recommendation similar artists: total=#{similar_artists.length} offset=#{offset} window=#{window.map(&:name).join(' | ')}"
         window
+      end
+
+      def spotify_track_matches?(track, generated_artist_name:, generated_title:)
+        spotify_artist = normalize_text(track.artists.first)
+        spotify_title = normalize_text(track.title)
+        artist_name = normalize_text(generated_artist_name)
+        title = normalize_text(generated_title)
+
+        spotify_artist.include?(artist_name) && spotify_title.include?(title)
+      end
+
+      def normalize_text(value)
+        value.to_s.downcase.gsub(/[^a-z0-9]+/, ' ').strip
       end
     end
   end

@@ -324,6 +324,12 @@ module YouFM
         update_status("Skip failed: #{friendly_error_message(e)}")
       end
 
+      def generate_recommendation
+        enqueue_recommendation(seed_tracks: recommendation_seed_tracks, trigger: :manual)
+      rescue StandardError => e
+        update_status("Recommendation failed: #{friendly_error_message(e)}")
+      end
+
       private
 
       attr_reader :source, :recommendation_generator, :lastfm_authenticator
