@@ -51,12 +51,14 @@ module YouFM
         Services::MusicSources::SpotifySource.new(client: fetch(:spotify_client))
       end
       register(:lastfm_token_store) { Services::LastfmTokenStore.new }
+      register(:lastfm_similar_artists_cache) { Services::LastfmSimilarArtistsCache.new }
       register(:lastfm_client) do
         session_data = fetch(:lastfm_token_store).load
         Services::LastfmClient.new(
           api_key: config.lastfm_api_key,
           secret: config.lastfm_secret,
-          session_key: session_data['key']
+          session_key: session_data['key'],
+          similar_artists_cache: fetch(:lastfm_similar_artists_cache)
         )
       end
       register(:lastfm_authenticator) do

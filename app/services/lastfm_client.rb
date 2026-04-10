@@ -3,17 +3,20 @@
 require 'net/http'
 require 'json'
 require 'digest/md5'
+require 'time'
 
 module YouFM
   module Services
     class LastfmClient
       class Error < StandardError; end
+      SIMILAR_ARTISTS_CACHE_TTL = 7 * 24 * 60 * 60
 
-      def initialize(api_key:, secret:, session_key: nil, base_url: 'http://ws.audioscrobbler.com/2.0/')
+      def initialize(api_key:, secret:, session_key: nil, base_url: 'http://ws.audioscrobbler.com/2.0/', similar_artists_cache: nil)
         @api_key = api_key
         @secret = secret
         @session_key = session_key
         @base_url = base_url
+        @similar_artists_cache = similar_artists_cache
       end
 
       SimilarArtist = Struct.new(:name, :match, keyword_init: true)
@@ -27,15 +30,9 @@ module YouFM
         get({method: 'auth.getSession', token: token}, signed: true)
       end
 
-      def get_similar_artists(artist_name, limit: 10)
-        body = get({method: 'artist.getSimilar', artist: artist_name, limit: limit}, signed: true)
-        artists = body.dig('similarartists', 'artist') || []
-        artists.map do |artist_data|
-          SimilarArtist.new(
-            name: artist_data['name'],
-            match: artist_data['match'].to_f
-          )
-        end
+      def get_similar_artists(artist_name, limit: nil)
+        artists = load_cached_similar_artists(artist_name) || fetch_similar_artists(artist_name)
+        limit ? artists.first(limit) : artists
       end
 
       def get_top_tracks(artist_name, limit: 10, period: '12month')
@@ -52,7 +49,30 @@ module YouFM
 
       private
 
-      attr_reader :api_key, :secret, :session_key, :base_url
+      attr_reader :api_key, :secret, :session_key, :base_url, :similar_artists_cache
+
+      def fetch_similar_artists(artist_name)
+        body = get({method: 'artist.getSimilar', artist: artist_name}, signed: true)
+        artists_payload = Array(body.dig('similarartists', 'artist'))
+        similar_artists_cache&.save(artist_name, artists_payload)
+        build_similar_artists(artists_payload)
+      end
+
+      def load_cached_similar_artists(artist_name)
+        cached_artists = similar_artists_cache&.fetch(artist_name, ttl: SIMILAR_ARTISTS_CACHE_TTL)
+        return nil unless cached_artists
+
+        build_similar_artists(cached_artists)
+      end
+
+      def build_similar_artists(artists)
+        artists.map do |artist_data|
+          SimilarArtist.new(
+            name: artist_data['name'],
+            match: artist_data['match'].to_f
+          )
+        end
+      end
 
       def get(params = {}, signed: false)
         params.merge!(api_key: api_key, format: 'json')

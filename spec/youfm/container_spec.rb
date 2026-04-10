@@ -23,6 +23,7 @@ RSpec.describe YouFM::Container do
     settings_store = instance_double(YouFM::Services::SettingsStore)
     token_store = instance_double(YouFM::Services::SpotifyTokenStore)
     lastfm_token_store = instance_double(YouFM::Services::LastfmTokenStore, load: { 'key' => 'session-key' })
+    lastfm_similar_artists_cache = instance_double(YouFM::Services::LastfmSimilarArtistsCache)
     browser_launcher = instance_double(YouFM::Services::BrowserLauncher)
     authenticator = instance_double(YouFM::Services::SpotifyAuthenticator)
     spotify_client = instance_double(YouFM::Services::SpotifyClient)
@@ -37,6 +38,7 @@ RSpec.describe YouFM::Container do
     allow(YouFM::Services::SettingsStore).to receive(:new).and_return(settings_store)
     allow(YouFM::Services::SpotifyTokenStore).to receive(:new).and_return(token_store)
     allow(YouFM::Services::LastfmTokenStore).to receive(:new).and_return(lastfm_token_store)
+    allow(YouFM::Services::LastfmSimilarArtistsCache).to receive(:new).and_return(lastfm_similar_artists_cache)
     allow(YouFM::Services::BrowserLauncher).to receive(:new).and_return(browser_launcher)
     allow(YouFM::Services::SpotifyAuthenticator).to receive(:new).with(
       client_id: 'client-id',
@@ -55,7 +57,8 @@ RSpec.describe YouFM::Container do
     allow(YouFM::Services::LastfmClient).to receive(:new).with(
       api_key: 'lastfm-key',
       secret: 'lastfm-secret',
-      session_key: 'session-key'
+      session_key: 'session-key',
+      similar_artists_cache: lastfm_similar_artists_cache
     ).and_return(lastfm_client)
     allow(YouFM::Services::LastfmAuthenticator).to receive(:new).with(
       api_key: 'lastfm-key',
