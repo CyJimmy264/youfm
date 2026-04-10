@@ -172,6 +172,16 @@ module YouFM
         update_status("Library refresh failed: #{friendly_error_message(e)}")
       end
 
+      def refresh_queue
+        @queue_mutex.synchronize do
+          state.queue_tracks = source.queue
+        end
+      rescue Services::SpotifyClient::AuthenticationError
+        update_status('Connect Spotify first')
+      rescue StandardError => e
+        update_status("Queue refresh failed: #{friendly_error_message(e)}")
+      end
+
       def select_index(index)
         return if index.nil?
         return if index.negative?
@@ -328,12 +338,6 @@ module YouFM
         state.queue_tracks[state.selected_queue_index]
       end
 
-      def refresh_queue
-        @queue_mutex.synchronize do
-          state.queue_tracks = source.queue
-        end
-      end
-
       def enqueue_recommendation
         seed_tracks = state.search_results
         recommended_track = recommendation_generator.generate_from_playlist(seed_tracks)
@@ -343,7 +347,7 @@ module YouFM
         return if state.queue_tracks.any? { |track| track.id == recommended_track.id }
 
         source.add_to_queue(recommended_track)
-        refresh_queue
+        append_recommended_track_to_local_queue(recommended_track)
         update_status("Added recommendation to Spotify queue: #{recommended_track.display_label}")
       end
 
@@ -448,6 +452,13 @@ module YouFM
 
       def update_status(message)
         state.status_message = message
+      end
+
+      def append_recommended_track_to_local_queue(track)
+        @queue_mutex.synchronize do
+          state.queue_tracks = [*state.queue_tracks, track]
+          state.selected_queue_index ||= 0 if state.queue_tracks.any?
+        end
       end
     end
   end

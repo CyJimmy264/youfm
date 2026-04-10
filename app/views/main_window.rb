@@ -384,6 +384,9 @@ module YouFM
         view_model.refresh_playback
         view_model.refresh_queue
         @render_queue.push(:render_full)
+      rescue StandardError => e
+        warn("[youfm] playback refresh failed: #{e.class}: #{e.message}")
+        @render_queue.push(:render_full)
       end
 
       def close_if_requested

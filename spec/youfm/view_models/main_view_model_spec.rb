@@ -12,6 +12,29 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
       resumable_session?: false
     )
   end
+  let(:recommendation_generator) { instance_double(YouFM::Services::RecommendationGenerator) }
+  let(:lastfm_authenticator) do
+    instance_double(
+      YouFM::Services::LastfmAuthenticator,
+      connected?: false,
+      configured?: false
+    )
+  end
+
+  before do
+    allow(Thread).to receive(:new).and_wrap_original do |_original, *args, &block|
+      block.call(*args)
+      instance_double(Thread)
+    end
+  end
+
+  def build_view_model
+    described_class.new(
+      source: source,
+      recommendation_generator: recommendation_generator,
+      lastfm_authenticator: lastfm_authenticator
+    )
+  end
 
   it 'bootstraps from a saved session without opening auth flow' do
     device = YouFM::Models::Device.new(id: 'd1', name: 'MacBook', type: 'Computer', active: true, restricted: false)
@@ -23,7 +46,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
       YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: nil, playing: false, progress_ms: 0)
     )
 
-    view_model = described_class.new(source: source)
+    view_model = build_view_model
     view_model.bootstrap
 
     expect(view_model.state.devices).to eq([device])
@@ -41,7 +64,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     )
     allow(source).to receive(:search_tracks).with('Track').and_return([track])
 
-    view_model = described_class.new(source: source)
+    view_model = build_view_model
     view_model.search('Track')
 
     expect(view_model.state.search_results).to eq([track])
@@ -52,7 +75,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     allow(source).to receive(:pause)
     allow(source).to receive(:resume)
 
-    view_model = described_class.new(source: source)
+    view_model = build_view_model
     view_model.state.playing = true
     view_model.toggle_playback
     expect(source).to have_received(:pause)
@@ -74,7 +97,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     )
     allow(source).to receive(:connected?).and_return(true)
 
-    view_model = described_class.new(source: source)
+    view_model = build_view_model
     view_model.connect_spotify
 
     expect(view_model.state.connected).to be(true)
@@ -94,7 +117,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     )
     allow(source).to receive(:playlist_tracks).with(playlist).and_return([track])
 
-    view_model = described_class.new(source: source)
+    view_model = build_view_model
     view_model.state.playlists = [playlist]
     view_model.select_playlist_index(0)
 
@@ -107,7 +130,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     allow(source).to receive(:connected?).and_return(true, false)
     allow(source).to receive(:configured?).and_return(true)
 
-    view_model = described_class.new(source: source)
+    view_model = build_view_model
     view_model.state.search_results = [
       YouFM::Models::Track.new(id: '1', title: 'Track', artists: ['Artist'], album: 'Album', uri: 'spotify:track:1', duration_ms: 1)
     ]
@@ -125,7 +148,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
   it 'shows a friendly playback error for unavailable devices' do
     allow(source).to receive(:play_track).and_raise(YouFM::Services::SpotifyClient::PlaybackUnavailableError, 'premium required')
 
-    view_model = described_class.new(source: source)
+    view_model = build_view_model
     view_model.state.search_results = [
       YouFM::Models::Track.new(id: '1', title: 'Track', artists: ['Artist'], album: 'Album', uri: 'spotify:track:1', duration_ms: 1)
     ]
@@ -134,5 +157,35 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     view_model.play_selected
 
     expect(view_model.state.status_message).to include('Spotify playback is unavailable')
+  end
+
+  it 'optimistically appends a generated recommendation to the local queue' do
+    current_track = YouFM::Models::Track.new(
+      id: '1',
+      title: 'Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:1',
+      duration_ms: 1
+    )
+    recommended_track = YouFM::Models::Track.new(
+      id: '2',
+      title: 'Recommended',
+      artists: ['Another Artist'],
+      album: 'Album 2',
+      uri: 'spotify:track:2',
+      duration_ms: 1
+    )
+    allow(source).to receive(:play_track)
+    allow(source).to receive(:add_to_queue).with(recommended_track)
+    allow(recommendation_generator).to receive(:generate_from_playlist).and_return(recommended_track)
+
+    view_model = build_view_model
+    view_model.state.search_results = [current_track]
+    view_model.state.selected_index = 0
+    view_model.play_selected
+
+    expect(view_model.state.queue_tracks).to include(recommended_track)
+    expect(source).to have_received(:add_to_queue).with(recommended_track)
   end
 end
