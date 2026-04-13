@@ -3,6 +3,8 @@
 module YouFM
   module ViewModels
     class MainViewModel
+      PLAYLIST_PAGE_SIZE = 100
+
       State = Struct.new(
         :source_name,
         :configured,
@@ -14,6 +16,7 @@ module YouFM
         :search_query,
         :search_results,
         :selected_index,
+        :tracks_loading_more,
         :devices,
         :selected_device_index,
         :playlists,
@@ -35,6 +38,10 @@ module YouFM
         @last_playing_track_id = nil
         @recently_played_track_ids = []
         @last_recommendation_seed_track_id = nil
+        @playlist_tracks_playlist_id = nil
+        @playlist_tracks_offset = 0
+        @playlist_tracks_has_more = false
+        @playlist_tracks_loading = false
         @state = State.new(
           source_name: source.name,
           configured: source.configured?,
@@ -46,6 +53,7 @@ module YouFM
           search_query: '',
           search_results: [],
           selected_index: nil,
+          tracks_loading_more: false,
           devices: [],
           selected_device_index: nil,
           playlists: [],
@@ -104,6 +112,7 @@ module YouFM
         @last_playing_track_id = nil
         @recently_played_track_ids = []
         @last_recommendation_seed_track_id = nil
+        reset_playlist_pagination
         state.devices = []
         state.selected_device_index = nil
         state.playlists = []
@@ -111,6 +120,7 @@ module YouFM
         state.queue_tracks = []
         state.search_results = []
         state.selected_index = nil
+        state.tracks_loading_more = false
         state.tracks_title = 'Tracks'
         state.device_name = nil
         state.now_playing = 'No active playback'
@@ -131,6 +141,7 @@ module YouFM
 
       def search(query)
         state.search_query = query.to_s.strip
+        state.tracks_loading_more = false
         return update_status('Enter a search query') if state.search_query.empty?
 
         tracks = source.search_tracks(state.search_query)
@@ -330,6 +341,38 @@ module YouFM
         update_status("Recommendation failed: #{friendly_error_message(e)}")
       end
 
+      def load_more_playlist_tracks(&on_loaded)
+        playlist = selected_playlist
+        return unless playlist
+        return unless @playlist_tracks_playlist_id == playlist.id
+        return unless @playlist_tracks_has_more
+        return if @playlist_tracks_loading
+
+        cached_page = source.cached_playlist_tracks_page(playlist, limit: PLAYLIST_PAGE_SIZE, offset: @playlist_tracks_offset)
+        if cached_page
+          append_playlist_tracks_page(playlist, cached_page)
+          on_loaded&.call
+          return
+        end
+
+        @playlist_tracks_loading = true
+        state.tracks_loading_more = true
+        Thread.new do
+          page = source.playlist_tracks_page(playlist, limit: PLAYLIST_PAGE_SIZE, offset: @playlist_tracks_offset)
+          append_playlist_tracks_page(playlist, page)
+          on_loaded&.call
+        rescue Services::SpotifyClient::AuthenticationError
+          update_status('Connect Spotify first')
+          on_loaded&.call
+        rescue StandardError => e
+          update_status("Playlist tracks failed: #{friendly_error_message(e)}")
+          on_loaded&.call
+        ensure
+          @playlist_tracks_loading = false
+          state.tracks_loading_more = false
+        end
+      end
+
       private
 
       attr_reader :source, :recommendation_generator, :lastfm_authenticator
@@ -382,13 +425,36 @@ module YouFM
         playlist = selected_playlist
         return unless playlist
 
+        reset_playlist_pagination
+        @playlist_tracks_playlist_id = playlist.id
+        state.search_query = ''
+        state.search_results = []
+        state.selected_index = nil
+        state.tracks_title = "Playlist: #{playlist.name}"
+        state.tracks_loading_more = true
+        update_status("Loading tracks from #{playlist.name}...")
+        on_loaded&.call
+
+        cached_tracks = source.cached_playlist_tracks(playlist, limit: PLAYLIST_PAGE_SIZE)
+        if cached_tracks
+          apply_cached_playlist_tracks(playlist, cached_tracks)
+          state.tracks_loading_more = false
+          on_loaded&.call
+          return
+        end
+
+        cached_page = source.cached_playlist_tracks_page(playlist, limit: PLAYLIST_PAGE_SIZE, offset: 0)
+        if cached_page
+          apply_playlist_tracks_page(playlist, cached_page)
+          state.tracks_loading_more = false
+          on_loaded&.call
+          return
+        end
+
+        @playlist_tracks_loading = true
         Thread.new do
-          tracks = source.playlist_tracks(playlist)
-          state.search_query = ''
-          state.search_results = tracks
-          state.selected_index = tracks.empty? ? nil : 0
-          state.tracks_title = "Playlist: #{playlist.name}"
-          update_status(tracks.empty? ? "Playlist is empty: #{playlist.name}" : "Loaded #{tracks.length} tracks from #{playlist.name}")
+          page = source.playlist_tracks_page(playlist, limit: PLAYLIST_PAGE_SIZE, offset: 0)
+          apply_playlist_tracks_page(playlist, page)
           on_loaded&.call
         rescue Services::SpotifyClient::AuthenticationError
           update_status('Connect Spotify first')
@@ -396,6 +462,9 @@ module YouFM
         rescue StandardError => e
           update_status("Playlist tracks failed: #{friendly_error_message(e)}")
           on_loaded&.call
+        ensure
+          @playlist_tracks_loading = false
+          state.tracks_loading_more = false
         end
       end
 
@@ -581,6 +650,42 @@ module YouFM
         message = "#{prefix}: #{details}"
         update_status(message)
         message
+      end
+
+      def reset_playlist_pagination
+        @playlist_tracks_playlist_id = nil
+        @playlist_tracks_offset = 0
+        @playlist_tracks_has_more = false
+        @playlist_tracks_loading = false
+        state.tracks_loading_more = false
+      end
+
+      def apply_playlist_tracks_page(playlist, page)
+        tracks = page.fetch(:tracks)
+        state.search_results = tracks
+        state.selected_index = tracks.empty? ? nil : 0
+        @playlist_tracks_offset = tracks.length
+        @playlist_tracks_has_more = page.fetch(:has_more)
+        update_status(tracks.empty? ? "Playlist is empty: #{playlist.name}" : "Loaded #{tracks.length} tracks from #{playlist.name}")
+      end
+
+      def append_playlist_tracks_page(playlist, page)
+        state.search_results = [*state.search_results, *page.fetch(:tracks)]
+        state.tracks_title = "Playlist: #{playlist.name}"
+        state.selected_index ||= 0 if state.search_results.any?
+        @playlist_tracks_offset += page.fetch(:tracks).length
+        @playlist_tracks_has_more = page.fetch(:has_more)
+        state.tracks_loading_more = false unless @playlist_tracks_loading
+        update_status(@playlist_tracks_has_more ? "Loaded #{state.search_results.length} tracks from #{playlist.name}" : "Loaded all #{state.search_results.length} tracks from #{playlist.name}")
+      end
+
+      def apply_cached_playlist_tracks(playlist, tracks)
+        state.search_results = tracks
+        state.selected_index = tracks.empty? ? nil : 0
+        state.tracks_title = "Playlist: #{playlist.name}"
+        @playlist_tracks_offset = tracks.length
+        @playlist_tracks_has_more = false
+        update_status(tracks.empty? ? "Playlist is empty: #{playlist.name}" : "Loaded all #{tracks.length} tracks from #{playlist.name}")
       end
     end
   end

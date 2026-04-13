@@ -8,11 +8,12 @@ module YouFM
       class PlaybackUnavailableError < Error; end
       class DeviceUnavailableError < Error; end
 
-      def initialize(access_token:, base_url: 'https://api.spotify.com/v1', token_store: nil, authenticator: nil)
+      def initialize(access_token:, base_url: 'https://api.spotify.com/v1', token_store: nil, authenticator: nil, playlist_cache: nil)
         @access_token = access_token.to_s.strip
         @base_url = base_url
         @token_store = token_store
         @authenticator = authenticator
+        @playlist_cache = playlist_cache
       end
 
       def search_tracks(query, limit: 20)
@@ -52,30 +53,79 @@ module YouFM
         Array(body['items']).map { |item| build_playlist(item) }
       end
 
-      def playlist_tracks(playlist_id, limit: 100)
-        all_items = []
-        path = "/playlists/#{playlist_id}/items"
-        params = { limit: limit }
+      def playlist_tracks(playlist_id, limit: 100, snapshot_id: nil)
+        tracks = []
+        offset = 0
 
         loop do
-          body = get(path, params)
-          all_items.concat(Array(body['items']))
-          next_url = body['next']
-          break if next_url.nil? || next_url.empty?
+          page = playlist_tracks_page(playlist_id, limit:, offset:, snapshot_id:)
+          tracks.concat(page[:tracks])
+          break unless page[:has_more]
 
-          path_and_query = next_url.sub(base_url, '')
-          next_uri = URI.parse(path_and_query)
-          path = next_uri.path
-          params = URI.decode_www_form(next_uri.query).to_h
+          offset += limit
         end
 
-        all_items.filter_map do |item|
+        tracks
+      end
+
+      def playlist_tracks_page(playlist_id, limit: 100, offset: 0, snapshot_id: nil)
+        cached_page = cached_playlist_tracks_page(playlist_id, limit:, offset:, snapshot_id:)
+        if cached_page
+          puts "[youfm] spotify playlist page cache hit: playlist_id=#{playlist_id} snapshot_id=#{snapshot_id || 'none'} offset=#{offset} limit=#{limit}"
+          return cached_page
+        end
+
+        puts "[youfm] spotify playlist page cache miss: playlist_id=#{playlist_id} snapshot_id=#{snapshot_id || 'none'} offset=#{offset} limit=#{limit}"
+
+        body = get("/playlists/#{playlist_id}/items", { limit: limit, offset: offset })
+        tracks = Array(body['items']).filter_map do |item|
           track_payload = item['item'] || item['track']
           next unless track_payload.is_a?(Hash)
           next if track_payload['type'].to_s == 'episode'
 
           build_track(track_payload)
         end
+        serialized_tracks = tracks.map { |track| serialize_track(track) }
+        has_more = !body['next'].to_s.empty?
+        playlist_cache&.save(
+          playlist_id: playlist_id,
+          snapshot_id: snapshot_id,
+          offset: offset,
+          limit: limit,
+          tracks: serialized_tracks,
+          has_more: has_more
+        )
+
+        {
+          tracks: tracks,
+          has_more: has_more
+        }
+      end
+
+      def cached_playlist_tracks_page(playlist_id, limit: 100, offset: 0, snapshot_id: nil)
+        cached_page = playlist_cache&.fetch(playlist_id:, snapshot_id:, offset:, limit:)
+        return nil unless cached_page
+
+        hydrate_playlist_page(cached_page)
+      end
+
+      def cached_playlist_tracks(playlist_id, limit: 100, snapshot_id: nil)
+        return nil if snapshot_id.to_s.empty?
+
+        tracks = []
+        offset = 0
+
+        loop do
+          page = cached_playlist_tracks_page(playlist_id, limit:, offset:, snapshot_id:)
+          return nil unless page
+
+          tracks.concat(page[:tracks])
+          break unless page[:has_more]
+
+          offset += limit
+        end
+
+        tracks
       end
 
       def play_track(track_uri)
@@ -137,7 +187,7 @@ module YouFM
 
       private
 
-      attr_reader :access_token, :base_url, :token_store, :authenticator
+      attr_reader :access_token, :base_url, :token_store, :authenticator, :playlist_cache
 
       def build_track(item)
         Models::Track.new(
@@ -166,8 +216,27 @@ module YouFM
           name: item.fetch('name', 'Untitled Playlist'),
           uri: item.fetch('uri', ''),
           owner_name: item.dig('owner', 'display_name').to_s,
-          tracks_total: playlist_items_total(item)
+          tracks_total: playlist_items_total(item),
+          snapshot_id: item['snapshot_id']
         )
+      end
+
+      def hydrate_playlist_page(page)
+        {
+          tracks: Array(page[:tracks]).map { |track_payload| build_track(track_payload) },
+          has_more: page[:has_more] == true
+        }
+      end
+
+      def serialize_track(track)
+        {
+          'id' => track.id,
+          'name' => track.title,
+          'artists' => track.artists.map { |artist| { 'name' => artist } },
+          'album' => { 'name' => track.album },
+          'uri' => track.uri,
+          'duration_ms' => track.duration_ms
+        }
       end
 
       def get(path, params = {})

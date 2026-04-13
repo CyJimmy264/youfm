@@ -28,6 +28,7 @@ module YouFM
       register(:theme) { Styles::Theme.new(name: config.theme_name) }
       register(:settings_store) { Services::SettingsStore.new }
       register(:spotify_token_store) { Services::SpotifyTokenStore.new }
+      register(:spotify_playlist_cache) { Services::SpotifyPlaylistCache.new }
       register(:browser_launcher) { Services::BrowserLauncher.new }
       register(:spotify_authenticator) do
         Services::SpotifyAuthenticator.new(
@@ -44,7 +45,8 @@ module YouFM
           access_token: config.spotify_access_token,
           base_url: config.spotify_api_base_url,
           token_store: fetch(:spotify_token_store),
-          authenticator: fetch(:spotify_authenticator)
+          authenticator: fetch(:spotify_authenticator),
+          playlist_cache: fetch(:spotify_playlist_cache)
         )
       end
       register(:music_source) do

@@ -22,6 +22,7 @@ RSpec.describe YouFM::Container do
     theme = instance_double(YouFM::Styles::Theme)
     settings_store = instance_double(YouFM::Services::SettingsStore)
     token_store = instance_double(YouFM::Services::SpotifyTokenStore)
+    spotify_playlist_cache = instance_double(YouFM::Services::SpotifyPlaylistCache)
     lastfm_token_store = instance_double(YouFM::Services::LastfmTokenStore, load: { 'key' => 'session-key' })
     lastfm_similar_artists_cache = instance_double(YouFM::Services::LastfmSimilarArtistsCache)
     browser_launcher = instance_double(YouFM::Services::BrowserLauncher)
@@ -37,6 +38,7 @@ RSpec.describe YouFM::Container do
     allow(YouFM::Styles::Theme).to receive(:new).with(name: 'dark').and_return(theme)
     allow(YouFM::Services::SettingsStore).to receive(:new).and_return(settings_store)
     allow(YouFM::Services::SpotifyTokenStore).to receive(:new).and_return(token_store)
+    allow(YouFM::Services::SpotifyPlaylistCache).to receive(:new).and_return(spotify_playlist_cache)
     allow(YouFM::Services::LastfmTokenStore).to receive(:new).and_return(lastfm_token_store)
     allow(YouFM::Services::LastfmSimilarArtistsCache).to receive(:new).and_return(lastfm_similar_artists_cache)
     allow(YouFM::Services::BrowserLauncher).to receive(:new).and_return(browser_launcher)
@@ -52,7 +54,8 @@ RSpec.describe YouFM::Container do
       access_token: 'token',
       base_url: 'https://api.spotify.com/v1',
       token_store: token_store,
-      authenticator: authenticator
+      authenticator: authenticator,
+      playlist_cache: spotify_playlist_cache
     ).and_return(spotify_client)
     allow(YouFM::Services::LastfmClient).to receive(:new).with(
       api_key: 'lastfm-key',

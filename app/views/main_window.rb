@@ -10,6 +10,7 @@ module YouFM
       PLAYBACK_REFRESH_MS = 5_000
       UI_REFRESH_MS = 100
       THEMES = %w[dark light].freeze
+      LOADER_FRAMES = ['Loading   ', 'Loading.  ', 'Loading.. ', 'Loading...'].freeze
 
       def initialize(
         view_model: ViewModels::MainViewModel.new(source: Services::MusicSources::SpotifySource.new(client: Services::SpotifyClient.new(access_token: nil))),
@@ -21,6 +22,7 @@ module YouFM
         @settings_store = settings_store
         @shutdown_requested = false
         @render_queue = Queue.new
+        @loader_frame_index = 0
         build_window
         bind_events
         view_model.bootstrap
@@ -268,6 +270,7 @@ module YouFM
         search_input.connect('returnPressed()') { handle_search }
         results_list.connect('currentRowChanged(int)') { |index| handle_selection(index) }
         results_list.connect('itemDoubleClicked(QListWidgetItem*)') { |_| handle_play_selected }
+        results_list.verticalScrollBar.connect('valueChanged(int)') { |_| handle_results_scroll }
         playlists_list.connect('currentRowChanged(int)') { |index| handle_playlist_selection(index) }
         playlists_list.connect('itemDoubleClicked(QListWidgetItem*)') { |_| handle_play_playlist }
         queue_list.connect('currentRowChanged(int)') { |index| handle_queue_selection(index) }
@@ -309,6 +312,15 @@ module YouFM
         render_status
       end
 
+      def handle_results_scroll
+        scrollbar = results_list.verticalScrollBar
+        return unless scrollbar
+        return unless scrollbar.maximum > 0
+        return unless scrollbar.value >= scrollbar.maximum - 20
+
+        view_model.load_more_playlist_tracks { @render_queue.push(:render_full) }
+      end
+
       def handle_queue_selection(_index)
         index = queue_list.currentRow
         view_model.select_queue_index(index.to_i)
@@ -321,6 +333,7 @@ module YouFM
 
       def handle_playlist_selection(_index)
         index = playlists_list.currentRow
+        @render_queue.push(:render_full)
         view_model.select_playlist_index(index.to_i) { @render_queue.push(:render_full) }
       end
 
@@ -383,6 +396,11 @@ module YouFM
       def on_ui_update
         close_if_requested and return if @shutdown_requested
 
+        if view_model.state.tracks_loading_more
+          @loader_frame_index = (@loader_frame_index + 1) % LOADER_FRAMES.length
+          @render_queue.push(:render_full) if @render_queue.empty?
+        end
+
         while !@render_queue.empty?
           message = @render_queue.pop(true)
           render_full if message == :render_full
@@ -432,13 +450,23 @@ module YouFM
       end
 
       def render_results(state)
+        scrollbar = results_list.verticalScrollBar
+        previous_scroll_value = scrollbar&.value
         results_list.block_signals(true)
         results_list.clear
         state.search_results.each do |track|
           results_list.add_item(track.display_label)
         end
+        results_list.add_item(loader_item_text) if state.tracks_loading_more
         results_list.current_row = state.selected_index if state.selected_index
         results_list.block_signals(false)
+        if scrollbar && !previous_scroll_value.nil?
+          scrollbar.value = [previous_scroll_value, scrollbar.maximum].min
+        end
+      end
+
+      def loader_item_text
+        LOADER_FRAMES[@loader_frame_index]
       end
 
       def render_devices(state)

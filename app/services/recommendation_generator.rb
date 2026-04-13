@@ -6,6 +6,7 @@ module YouFM
   module Services
     class RecommendationGenerator
       SIMILAR_ARTIST_WINDOW_SIZE = 10
+      SIMILAR_ARTIST_OFFSET_LIMIT = 200
       TOP_TRACK_WINDOW_SIZE = 7
       TOP_TRACK_ATTEMPTS_PER_ARTIST = 3
 
@@ -26,7 +27,7 @@ module YouFM
           similar_artists = @lastfm_client.get_similar_artists(artist_name)
           next if similar_artists.empty?
 
-          similar_artists_window(similar_artists).each do |similar_artist|
+          similar_artists_window(similar_artists).shuffle.each do |similar_artist|
             top_tracks = @lastfm_client.get_top_tracks(similar_artist.name, period: '12month', limit: 20)
             next if top_tracks.empty?
 
@@ -59,7 +60,7 @@ module YouFM
 
       def similar_artists_window(similar_artists)
         window_size = [SIMILAR_ARTIST_WINDOW_SIZE, similar_artists.length].min
-        offset = rand(similar_artists.length)
+        offset = rand([SIMILAR_ARTIST_OFFSET_LIMIT, similar_artists.length].min).floor
         window = similar_artists.rotate(offset).first(window_size)
         puts "[youfm] recommendation similar artists: total=#{similar_artists.length} offset=#{offset} window=#{window.map(&:name).join(' | ')}"
         window

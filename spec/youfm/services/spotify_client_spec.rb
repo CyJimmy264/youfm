@@ -81,7 +81,8 @@ RSpec.describe YouFM::Services::SpotifyClient do
             'name' => 'My Playlist',
             'uri' => 'spotify:playlist:1',
             'owner' => { 'display_name' => 'Owner' },
-            'items' => { 'total' => 68 }
+            'items' => { 'total' => 68 },
+            'snapshot_id' => 'snapshot-1'
           }
         ]
       ))
@@ -93,6 +94,7 @@ RSpec.describe YouFM::Services::SpotifyClient do
 
       expect(result.length).to eq(1)
       expect(result.first.tracks_total).to eq(68)
+      expect(result.first.snapshot_id).to eq('snapshot-1')
     end
   end
 
@@ -129,6 +131,157 @@ RSpec.describe YouFM::Services::SpotifyClient do
 
       expect(result.length).to eq(1)
       expect(result.first.display_label).to eq('Track - Artist')
+    end
+  end
+
+  describe '#playlist_tracks_page' do
+    it 'returns one playlist page with has_more flag' do
+      client = described_class.new(access_token: 'token', base_url: 'https://api.spotify.test/v1')
+      response = instance_double(Net::HTTPResponse, code: '200', body: JSON.dump(
+        'items' => [
+          {
+            'item' => {
+              'id' => 'track-1',
+              'type' => 'track',
+              'name' => 'Track',
+              'artists' => [{ 'name' => 'Artist' }],
+              'album' => { 'name' => 'Album' },
+              'uri' => 'spotify:track:1',
+              'duration_ms' => 123_000
+            }
+          }
+        ],
+        'next' => 'https://api.spotify.test/v1/playlists/playlist-1/items?offset=100&limit=100'
+      ))
+      http = instance_double(Net::HTTP, request: response)
+
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+
+      result = client.playlist_tracks_page('playlist-1', limit: 100, offset: 0)
+
+      expect(result[:has_more]).to be(true)
+      expect(result[:tracks].map(&:display_label)).to eq(['Track - Artist'])
+    end
+
+    it 'uses cached playlist pages when snapshot id matches' do
+      playlist_cache = instance_double(
+        YouFM::Services::SpotifyPlaylistCache,
+        fetch: {
+          tracks: [
+            {
+              'id' => 'track-1',
+              'name' => 'Track',
+              'artists' => [{ 'name' => 'Artist' }],
+              'album' => { 'name' => 'Album' },
+              'uri' => 'spotify:track:1',
+              'duration_ms' => 123_000
+            }
+          ],
+          has_more: false
+        }
+      )
+      client = described_class.new(
+        access_token: 'token',
+        base_url: 'https://api.spotify.test/v1',
+        playlist_cache: playlist_cache
+      )
+
+      result = client.playlist_tracks_page('playlist-1', limit: 100, offset: 0, snapshot_id: 'snapshot-1')
+
+      expect(result[:has_more]).to be(false)
+      expect(result[:tracks].map(&:display_label)).to eq(['Track - Artist'])
+      expect(playlist_cache).to have_received(:fetch).with(
+        playlist_id: 'playlist-1',
+        snapshot_id: 'snapshot-1',
+        offset: 0,
+        limit: 100
+      )
+    end
+  end
+
+  describe '#cached_playlist_tracks_page' do
+    it 'hydrates cached track payloads without touching the network' do
+      playlist_cache = instance_double(
+        YouFM::Services::SpotifyPlaylistCache,
+        fetch: {
+          tracks: [
+            {
+              'id' => 'track-1',
+              'name' => 'Track',
+              'artists' => [{ 'name' => 'Artist' }],
+              'album' => { 'name' => 'Album' },
+              'uri' => 'spotify:track:1',
+              'duration_ms' => 123_000
+            }
+          ],
+          has_more: false
+        }
+      )
+      client = described_class.new(
+        access_token: 'token',
+        base_url: 'https://api.spotify.test/v1',
+        playlist_cache: playlist_cache
+      )
+
+      result = client.cached_playlist_tracks_page('playlist-1', limit: 100, offset: 0, snapshot_id: 'snapshot-1')
+
+      expect(result[:tracks].map(&:display_label)).to eq(['Track - Artist'])
+      expect(result[:has_more]).to be(false)
+    end
+  end
+
+  describe '#cached_playlist_tracks' do
+    it 'returns full cached playlist only when every page is present' do
+      playlist_cache = instance_double(YouFM::Services::SpotifyPlaylistCache)
+      allow(playlist_cache).to receive(:fetch).with(
+        playlist_id: 'playlist-1',
+        snapshot_id: 'snapshot-1',
+        offset: 0,
+        limit: 100
+      ).and_return(
+        {
+          tracks: [
+            {
+              'id' => 'track-1',
+              'name' => 'Track 1',
+              'artists' => [{ 'name' => 'Artist' }],
+              'album' => { 'name' => 'Album' },
+              'uri' => 'spotify:track:1',
+              'duration_ms' => 123_000
+            }
+          ],
+          has_more: true
+        }
+      )
+      allow(playlist_cache).to receive(:fetch).with(
+        playlist_id: 'playlist-1',
+        snapshot_id: 'snapshot-1',
+        offset: 100,
+        limit: 100
+      ).and_return(
+        {
+          tracks: [
+            {
+              'id' => 'track-2',
+              'name' => 'Track 2',
+              'artists' => [{ 'name' => 'Artist' }],
+              'album' => { 'name' => 'Album' },
+              'uri' => 'spotify:track:2',
+              'duration_ms' => 123_000
+            }
+          ],
+          has_more: false
+        }
+      )
+      client = described_class.new(
+        access_token: 'token',
+        base_url: 'https://api.spotify.test/v1',
+        playlist_cache: playlist_cache
+      )
+
+      result = client.cached_playlist_tracks('playlist-1', limit: 100, snapshot_id: 'snapshot-1')
+
+      expect(result.map(&:display_label)).to eq(['Track 1 - Artist', 'Track 2 - Artist'])
     end
   end
 
