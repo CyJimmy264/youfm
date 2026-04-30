@@ -25,7 +25,7 @@ RSpec.describe YouFM::Services::RecommendationGenerator do
     top_track = YouFM::Services::LastfmClient::TopTrack.new(name: 'Top Track', playcount: 100, listeners: 10)
     recommended_track = build_track(id: 'recommended', title: 'Top Track', artist: 'Similar 12', uri: 'spotify:track:recommended')
 
-    allow(lastfm_client).to receive(:get_similar_artists).with('Seed Artist').and_return(similar_artists)
+    allow(lastfm_client).to receive(:get_similar_artists).with('Seed Artist', limit: 200).and_return(similar_artists)
     allow(lastfm_client).to receive(:get_top_tracks).and_return([])
     allow(lastfm_client).to receive(:get_top_tracks).with('Similar 12', period: '12month', limit: 20).and_return([top_track])
     allow(spotify_client).to receive(:search_tracks).with('Top Track artist:Similar 12', limit: 10).and_return([recommended_track])
@@ -46,7 +46,7 @@ RSpec.describe YouFM::Services::RecommendationGenerator do
     loose_match = build_track(id: 'loose', title: 'Different Song', artist: 'Similar', uri: 'spotify:track:loose')
     exact_match = build_track(id: 'exact', title: 'Song Two', artist: 'Exact Artist', uri: 'spotify:track:exact')
 
-    allow(lastfm_client).to receive(:get_similar_artists).with('Seed Artist').and_return([first_similar_artist, second_similar_artist])
+    allow(lastfm_client).to receive(:get_similar_artists).with('Seed Artist', limit: 200).and_return([first_similar_artist, second_similar_artist])
     allow(lastfm_client).to receive(:get_top_tracks).with('Similar Artist', period: '12month', limit: 20).and_return([first_top_track])
     allow(lastfm_client).to receive(:get_top_tracks).with('Exact Artist', period: '12month', limit: 20).and_return([second_top_track])
     allow(spotify_client).to receive(:search_tracks).with('Song One artist:Similar Artist', limit: 10).and_return([loose_match])
@@ -74,7 +74,7 @@ RSpec.describe YouFM::Services::RecommendationGenerator do
     loose_match = build_track(id: 'loose', title: 'Different Song', artist: 'First', uri: 'spotify:track:loose')
     exact_match = build_track(id: 'exact', title: 'Hit Song', artist: 'Second Artist', uri: 'spotify:track:exact')
 
-    allow(lastfm_client).to receive(:get_similar_artists).with('Seed Artist').and_return([first_similar_artist, second_similar_artist])
+    allow(lastfm_client).to receive(:get_similar_artists).with('Seed Artist', limit: 200).and_return([first_similar_artist, second_similar_artist])
     allow(lastfm_client).to receive(:get_top_tracks).with('First Artist', period: '12month', limit: 20).and_return(first_artist_tracks)
     allow(lastfm_client).to receive(:get_top_tracks).with('Second Artist', period: '12month', limit: 20).and_return(second_artist_tracks)
     allow(spotify_client).to receive(:search_tracks).with('Miss One artist:First Artist', limit: 10).and_return([loose_match])
@@ -90,5 +90,23 @@ RSpec.describe YouFM::Services::RecommendationGenerator do
 
     expect(result).to eq(exact_match)
     expect(spotify_client).not_to have_received(:search_tracks).with('Miss Four artist:First Artist', limit: 10)
+  end
+
+  it 'uses the configured similar artist pool limit when asking Last.fm for candidates' do
+    seed_track = build_track(id: 'seed', title: 'Seed', artist: 'Seed Artist', uri: 'spotify:track:seed')
+    similar_artist = YouFM::Services::LastfmClient::SimilarArtist.new(name: 'Similar Artist', match: 0.5)
+    top_track = YouFM::Services::LastfmClient::TopTrack.new(name: 'Top Track', playcount: 100, listeners: 10)
+    recommended_track = build_track(id: 'recommended', title: 'Top Track', artist: 'Similar Artist', uri: 'spotify:track:recommended')
+
+    allow(lastfm_client).to receive(:get_similar_artists).with('Seed Artist', limit: 350).and_return([similar_artist])
+    allow(lastfm_client).to receive(:get_top_tracks).with('Similar Artist', period: '12month', limit: 20).and_return([top_track])
+    allow(spotify_client).to receive(:search_tracks).with('Top Track artist:Similar Artist', limit: 10).and_return([recommended_track])
+    allow_any_instance_of(described_class).to receive(:rand).with(1).and_return(0)
+
+    generator = described_class.new(lastfm_client:, spotify_client:, similar_artist_pool_limit: 350)
+    result = generator.generate_from_playlist([seed_track], playlist_name: 'Daily')
+
+    expect(result).to eq(recommended_track)
+    expect(generator.similar_artist_pool_limit).to eq(350)
   end
 end

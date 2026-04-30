@@ -15,6 +15,14 @@ module YouFM
         write_payload(payload.merge('theme_name' => theme_name))
       end
 
+      def read_similar_artist_pool_limit
+        payload.fetch('similar_artist_pool_limit', nil)
+      end
+
+      def write_similar_artist_pool_limit(limit)
+        write_payload(payload.merge('similar_artist_pool_limit' => limit.to_i))
+      end
+
       private
 
       attr_reader :path

@@ -5,14 +5,21 @@ require 'set'
 module YouFM
   module Services
     class RecommendationGenerator
+      DEFAULT_SIMILAR_ARTIST_POOL_LIMIT = 200
       SIMILAR_ARTIST_WINDOW_SIZE = 10
-      SIMILAR_ARTIST_OFFSET_LIMIT = 200
       TOP_TRACK_WINDOW_SIZE = 7
       TOP_TRACK_ATTEMPTS_PER_ARTIST = 3
 
-      def initialize(lastfm_client:, spotify_client:)
+      def initialize(lastfm_client:, spotify_client:, similar_artist_pool_limit: DEFAULT_SIMILAR_ARTIST_POOL_LIMIT)
         @lastfm_client = lastfm_client
         @spotify_client = spotify_client
+        self.similar_artist_pool_limit = similar_artist_pool_limit
+      end
+
+      attr_reader :similar_artist_pool_limit
+
+      def similar_artist_pool_limit=(value)
+        @similar_artist_pool_limit = normalize_pool_limit(value)
       end
 
       def generate_from_playlist(seed_tracks, excluded_track_ids: [], playlist_name: nil)
@@ -24,7 +31,7 @@ module YouFM
           artist_name = seed_track.artists.first
           next unless artist_name
 
-          similar_artists = @lastfm_client.get_similar_artists(artist_name)
+          similar_artists = @lastfm_client.get_similar_artists(artist_name, limit: similar_artist_pool_limit)
           next if similar_artists.empty?
 
           similar_artists_window(similar_artists).shuffle.each do |similar_artist|
@@ -60,9 +67,9 @@ module YouFM
 
       def similar_artists_window(similar_artists)
         window_size = [SIMILAR_ARTIST_WINDOW_SIZE, similar_artists.length].min
-        offset = rand([SIMILAR_ARTIST_OFFSET_LIMIT, similar_artists.length].min).floor
+        offset = rand(similar_artists.length).floor
         window = similar_artists.rotate(offset).first(window_size)
-        puts "[youfm] recommendation similar artists: total=#{similar_artists.length} offset=#{offset} window=#{window.map(&:name).join(' | ')}"
+        puts "[youfm] recommendation similar artists: total=#{similar_artists.length} pool_limit=#{similar_artist_pool_limit} offset=#{offset} window=#{window.map(&:name).join(' | ')}"
         window
       end
 
@@ -77,6 +84,13 @@ module YouFM
 
       def normalize_text(value)
         value.to_s.downcase.gsub(/[^a-z0-9]+/, ' ').strip
+      end
+
+      def normalize_pool_limit(value)
+        parsed = Integer(value, exception: false)
+        return DEFAULT_SIMILAR_ARTIST_POOL_LIMIT if parsed.nil? || parsed <= 0
+
+        parsed
       end
     end
   end

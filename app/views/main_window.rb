@@ -7,7 +7,9 @@ module YouFM
     class MainWindow
       WINDOW_W = 1260
       WINDOW_H = 840
-      PLAYBACK_REFRESH_MS = 5_000
+      ACTIVE_PLAYBACK_REFRESH_MS = 5_000
+      IDLE_PLAYBACK_REFRESH_MS = 30_000
+      IDLE_POLLS_BEFORE_SUSPEND = 2
       UI_REFRESH_MS = 100
       THEMES = %w[dark light].freeze
       LOADER_FRAMES = ['Loading   ', 'Loading.  ', 'Loading.. ', 'Loading...'].freeze
@@ -23,8 +25,10 @@ module YouFM
         @shutdown_requested = false
         @render_queue = Queue.new
         @loader_frame_index = 0
+        @idle_playback_polls = 0
         build_window
         bind_events
+        apply_saved_similar_artist_pool_limit
         view_model.bootstrap
         render_full
       end
@@ -38,7 +42,7 @@ module YouFM
       attr_reader :view_model, :theme, :settings_store, :window, :search_input, :results_list, :playlists_list,
                   :queue_list, :device_picker, :status_label, :auth_label, :lastfm_auth_label, :device_label, :now_playing_label,
                   :toggle_button, :theme_button, :connect_button, :disconnect_button, :connect_lastfm_button,
-                  :disconnect_lastfm_button, :tracks_title_label, :next_button
+                  :disconnect_lastfm_button, :tracks_title_label, :next_button, :similar_artist_pool_limit_input
 
       def build_window
         @window = QWidget.new do |widget|
@@ -66,7 +70,7 @@ module YouFM
         @ui_updater.start
 
         @playback_refresher = QTimer.new(window)
-        @playback_refresher.interval = PLAYBACK_REFRESH_MS
+        @playback_refresher.interval = ACTIVE_PLAYBACK_REFRESH_MS
         @playback_refresher.connect('timeout') { on_playback_refresh }
         @playback_refresher.start
       end
@@ -135,6 +139,19 @@ module YouFM
           generate_button = build_button(window, 'ghost_button', 'Generate Next')
           generate_button.connect('clicked') { |_| handle_generate_recommendation }
           layout.add_widget(generate_button)
+
+          layout.add_widget(build_label(window, 'status_label', 'Artist Pool'))
+
+          @similar_artist_pool_limit_input = QLineEdit.new(window)
+          similar_artist_pool_limit_input.object_name = 'search_input'
+          similar_artist_pool_limit_input.placeholder_text = 'Pool limit'
+          similar_artist_pool_limit_input.maximum_width = 96
+          similar_artist_pool_limit_input.text = view_model.similar_artist_pool_limit.to_s
+          layout.add_widget(similar_artist_pool_limit_input)
+
+          apply_pool_limit_button = build_button(window, 'ghost_button', 'Apply')
+          apply_pool_limit_button.connect('clicked') { |_| handle_apply_similar_artist_pool_limit }
+          layout.add_widget(apply_pool_limit_button)
 
           refresh_button = build_button(window, 'ghost_button', 'Refresh')
           refresh_button.connect('clicked') { |_| handle_refresh }
@@ -268,6 +285,7 @@ module YouFM
 
       def bind_events
         search_input.connect('returnPressed()') { handle_search }
+        similar_artist_pool_limit_input.connect('returnPressed()') { handle_apply_similar_artist_pool_limit }
         results_list.connect('currentRowChanged(int)') { |index| handle_selection(index) }
         results_list.connect('itemDoubleClicked(QListWidgetItem*)') { |_| handle_play_selected }
         results_list.verticalScrollBar.connect('valueChanged(int)') { |_| handle_results_scroll }
@@ -282,6 +300,7 @@ module YouFM
       end
 
       def handle_connect_spotify
+        resume_playback_polling!
         view_model.connect_spotify
         render_full
       end
@@ -298,6 +317,7 @@ module YouFM
 
       def handle_disconnect_spotify
         view_model.disconnect_spotify
+        suspend_playback_polling!
         render_full
       end
 
@@ -338,46 +358,68 @@ module YouFM
       end
 
       def handle_play_selected
+        resume_playback_polling!
         view_model.play_selected
         render_status
       end
 
       def handle_play_queued
+        resume_playback_polling!
         view_model.play_selected_queued_track
         render_status
       end
 
       def handle_activate_device
+        resume_playback_polling!
         view_model.activate_selected_device
         render_full
       end
 
       def handle_play_playlist
+        resume_playback_polling!
         view_model.play_selected_playlist
         render_status
       end
 
       def handle_toggle
+        resume_playback_polling!
         view_model.toggle_playback
         render_status
       end
 
       def handle_skip_to_next
+        resume_playback_polling!
         view_model.skip_to_next
         render_status
       end
 
       def handle_generate_recommendation
+        resume_playback_polling!
         view_model.generate_recommendation
         render_status
       end
 
+      def handle_apply_similar_artist_pool_limit
+        applied_limit = view_model.update_similar_artist_pool_limit(similar_artist_pool_limit_input.text.to_s)
+        if applied_limit
+          similar_artist_pool_limit_input.text = applied_limit.to_s
+          settings_store.write_similar_artist_pool_limit(applied_limit)
+        else
+          similar_artist_pool_limit_input.text = view_model.similar_artist_pool_limit.to_s
+        end
+        render_status
+      rescue StandardError => e
+        warn("[youfm] save similar artist pool limit failed: #{e.class}: #{e.message}")
+      end
+
       def handle_refresh
+        resume_playback_polling!
         view_model.refresh_playback
         render_status
       end
 
       def handle_refresh_library
+        resume_playback_polling!
         view_model.refresh_library
         render_full
       end
@@ -410,6 +452,7 @@ module YouFM
       def on_playback_refresh
         view_model.refresh_playback
         view_model.refresh_queue
+        adjust_playback_polling!
         @render_queue.push(:render_full)
       rescue StandardError => e
         warn("[youfm] playback refresh failed: #{e.class}: #{e.message}")
@@ -417,9 +460,51 @@ module YouFM
       end
 
       def close_if_requested
-        @ui_updater.stop if @ui_updater.active?
-        @playback_refresher.stop if @playback_refresher.active?
+        @ui_updater.stop if @ui_updater.is_active
+        @playback_refresher.stop if @playback_refresher.is_active
         window.close
+      end
+
+      def adjust_playback_polling!
+        if playback_inactive?
+          @idle_playback_polls += 1
+          if @idle_playback_polls >= IDLE_POLLS_BEFORE_SUSPEND
+            suspend_playback_polling!
+          else
+            @playback_refresher.interval = IDLE_PLAYBACK_REFRESH_MS
+          end
+        else
+          @idle_playback_polls = 0
+          @playback_refresher.interval = ACTIVE_PLAYBACK_REFRESH_MS
+          @playback_refresher.start unless @playback_refresher.is_active
+        end
+      end
+
+      def playback_inactive?
+        state = view_model.state
+        !state.playing && state.now_playing == 'No active playback'
+      end
+
+      def resume_playback_polling!
+        @idle_playback_polls = 0
+        @playback_refresher.interval = ACTIVE_PLAYBACK_REFRESH_MS
+        @playback_refresher.start unless @playback_refresher.is_active
+      end
+
+      def suspend_playback_polling!
+        @idle_playback_polls = IDLE_POLLS_BEFORE_SUSPEND
+        @playback_refresher.stop if @playback_refresher.is_active
+      end
+
+      def apply_saved_similar_artist_pool_limit
+        saved_limit = settings_store.read_similar_artist_pool_limit
+        return similar_artist_pool_limit_input.text = view_model.similar_artist_pool_limit.to_s if saved_limit.nil?
+
+        applied_limit = view_model.set_similar_artist_pool_limit(saved_limit)
+        similar_artist_pool_limit_input.text = (applied_limit || view_model.similar_artist_pool_limit).to_s
+      rescue StandardError => e
+        warn("[youfm] load similar artist pool limit failed: #{e.class}: #{e.message}")
+        similar_artist_pool_limit_input.text = view_model.similar_artist_pool_limit.to_s
       end
 
       def render_full

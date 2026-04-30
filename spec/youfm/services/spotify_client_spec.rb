@@ -46,6 +46,59 @@ RSpec.describe YouFM::Services::SpotifyClient do
     end
   end
 
+  describe 'rate limiting' do
+    it 'raises a rate-limited error with Retry-After seconds from Spotify headers' do
+      client = described_class.new(access_token: 'token', base_url: 'https://api.spotify.test/v1')
+      response = instance_double(
+        Net::HTTPResponse,
+        code: '429',
+        body: JSON.dump('error' => { 'message' => 'Too many requests' })
+      )
+      allow(response).to receive(:[]).with('Retry-After').and_return('17')
+      http = instance_double(Net::HTTP, request: response)
+
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+
+      expect { client.queue }.to raise_error(YouFM::Services::SpotifyClient::RateLimitedError) do |error|
+        expect(error.retry_after_seconds).to eq(17)
+        expect(error.message).to eq('Too many requests')
+      end
+    end
+
+    it 'blocks all follow-up Spotify requests until Retry-After expires' do
+      client = described_class.new(access_token: 'token', base_url: 'https://api.spotify.test/v1')
+      rate_limited_response = instance_double(
+        Net::HTTPResponse,
+        code: '429',
+        body: JSON.dump('error' => { 'message' => 'Too many requests' })
+      )
+      success_response = instance_double(
+        Net::HTTPResponse,
+        code: '200',
+        body: JSON.dump('devices' => [])
+      )
+      allow(rate_limited_response).to receive(:[]).with('Retry-After').and_return('17')
+      allow(success_response).to receive(:[]).with('Retry-After').and_return(nil)
+
+      now = Time.utc(2026, 4, 14, 10, 0, 0)
+      allow(Time).to receive(:now).and_return(now)
+      http = instance_double(Net::HTTP)
+      allow(http).to receive(:request).and_return(rate_limited_response, success_response)
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+
+      expect { client.queue }.to raise_error(YouFM::Services::SpotifyClient::RateLimitedError)
+      expect { client.available_devices }.to raise_error(YouFM::Services::SpotifyClient::RateLimitedError) do |error|
+        expect(error.retry_after_seconds).to eq(17)
+      end
+
+      allow(Time).to receive(:now).and_return(now + 18)
+      result = client.available_devices
+
+      expect(result).to eq([])
+      expect(Net::HTTP).to have_received(:start).twice
+    end
+  end
+
   describe '#available_devices' do
     it 'maps Spotify devices into device models' do
       client = described_class.new(access_token: 'token', base_url: 'https://api.spotify.test/v1')

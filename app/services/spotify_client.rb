@@ -7,6 +7,14 @@ module YouFM
       class AuthenticationError < Error; end
       class PlaybackUnavailableError < Error; end
       class DeviceUnavailableError < Error; end
+      class RateLimitedError < Error
+        attr_reader :retry_after_seconds
+
+        def initialize(message, retry_after_seconds: nil)
+          super(message)
+          @retry_after_seconds = retry_after_seconds
+        end
+      end
 
       def initialize(access_token:, base_url: 'https://api.spotify.com/v1', token_store: nil, authenticator: nil, playlist_cache: nil)
         @access_token = access_token.to_s.strip
@@ -14,6 +22,7 @@ module YouFM
         @token_store = token_store
         @authenticator = authenticator
         @playlist_cache = playlist_cache
+        @rate_limited_until = nil
       end
 
       def search_tracks(query, limit: 20)
@@ -269,6 +278,7 @@ module YouFM
       end
 
       def request(request)
+        enforce_rate_limit!
         ensure_token!
         response = perform_request(request, bearer_token)
         if response.code.to_i == 401 && refreshable?
@@ -283,6 +293,7 @@ module YouFM
         code = response.code.to_i
         body = response.body.to_s
         raise AuthenticationError, 'Spotify access token is missing or expired' if code == 401
+        raise rate_limited_error_for(response, body) if code == 429
         raise playback_error_for(code, body) if playback_error_for(code, body)
         raise Error, extract_error_message(body) if code >= 400 && code != 204
 
@@ -345,6 +356,24 @@ module YouFM
         return DeviceUnavailableError.new(message) if code == 404
 
         nil
+      end
+
+      def rate_limited_error_for(response, body)
+        retry_after_seconds = Integer(response['Retry-After'], exception: false)
+        @rate_limited_until = retry_after_seconds && retry_after_seconds.positive? ? Time.now + retry_after_seconds : nil
+        message = extract_error_message(body)
+        message = 'Too many requests' if message.to_s.strip.empty?
+        RateLimitedError.new(message, retry_after_seconds: retry_after_seconds)
+      end
+
+      def enforce_rate_limit!
+        return unless @rate_limited_until && Time.now < @rate_limited_until
+
+        remaining_seconds = (@rate_limited_until - Time.now).ceil
+        raise RateLimitedError.new(
+          "Spotify rate limit active, retry in #{remaining_seconds}s",
+          retry_after_seconds: remaining_seconds
+        )
       end
 
       def extract_error_message(body)

@@ -42,6 +42,7 @@ module YouFM
         @playlist_tracks_offset = 0
         @playlist_tracks_has_more = false
         @playlist_tracks_loading = false
+        @next_queue_refresh_at = nil
         @state = State.new(
           source_name: source.name,
           configured: source.configured?,
@@ -112,6 +113,7 @@ module YouFM
         @last_playing_track_id = nil
         @recently_played_track_ids = []
         @last_recommendation_seed_track_id = nil
+        @next_queue_refresh_at = nil
         reset_playlist_pagination
         state.devices = []
         state.selected_device_index = nil
@@ -158,7 +160,7 @@ module YouFM
       def refresh_playback
         previous_track_id = @last_playing_track_id
         playback = source.current_playback
-        state.device_name = playback.device_name
+        state.device_name = playback.device_name.to_s.empty? ? active_device_name : playback.device_name
         state.now_playing = playback.status_label
         state.playing = playback.playing
         playback_change_message = handle_playback_track_change(playback.track, previous_track_id:)
@@ -192,10 +194,16 @@ module YouFM
       end
 
       def refresh_queue
+        return state.queue_tracks if queue_refresh_deferred?
+
         @queue_mutex.synchronize do
           state.queue_tracks = filtered_queue_tracks(source.queue)
           normalize_selected_queue_index!
         end
+        @next_queue_refresh_at = nil
+      rescue Services::SpotifyClient::RateLimitedError => e
+        schedule_queue_refresh_retry(e.retry_after_seconds)
+        update_status(queue_rate_limit_message(e.retry_after_seconds))
       rescue Services::SpotifyClient::AuthenticationError
         update_status('Connect Spotify first')
       rescue StandardError => e
@@ -259,7 +267,8 @@ module YouFM
         return update_status('Select a device first') unless device
 
         source.transfer_playback(device)
-        refresh_library
+        mark_device_active!(device.id)
+        state.device_name = device.name
         update_status("Transferred playback to #{device.name}")
       rescue Services::SpotifyClient::AuthenticationError
         update_status('Connect Spotify first')
@@ -339,6 +348,26 @@ module YouFM
         enqueue_recommendation(seed_tracks: recommendation_seed_tracks, trigger: :manual)
       rescue StandardError => e
         update_status("Recommendation failed: #{friendly_error_message(e)}")
+      end
+
+      def similar_artist_pool_limit
+        recommendation_generator.similar_artist_pool_limit
+      end
+
+      def set_similar_artist_pool_limit(value)
+        parsed = normalize_similar_artist_pool_limit(value)
+        return nil unless parsed
+
+        recommendation_generator.similar_artist_pool_limit = parsed
+        parsed
+      end
+
+      def update_similar_artist_pool_limit(value)
+        parsed = set_similar_artist_pool_limit(value)
+        return update_status('Similar artist pool limit must be a positive integer') unless parsed
+
+        update_status("Similar artist pool limit set to #{parsed}")
+        parsed
       end
 
       def load_more_playlist_tracks(&on_loaded)
@@ -475,6 +504,22 @@ module YouFM
 
       def first_active_device_index
         state.devices.index(&:active) || (state.devices.empty? ? nil : 0)
+      end
+
+      def active_device_name
+        state.devices.find(&:active)&.name
+      end
+
+      def mark_device_active!(device_id)
+        state.devices = state.devices.map do |device|
+          Models::Device.new(
+            id: device.id,
+            name: device.name,
+            type: device.type,
+            active: device.id == device_id,
+            restricted: device.restricted
+          )
+        end
       end
 
       def initial_status
@@ -686,6 +731,29 @@ module YouFM
         @playlist_tracks_offset = tracks.length
         @playlist_tracks_has_more = false
         update_status(tracks.empty? ? "Playlist is empty: #{playlist.name}" : "Loaded all #{tracks.length} tracks from #{playlist.name}")
+      end
+
+      def normalize_similar_artist_pool_limit(value)
+        parsed = Integer(value, exception: false)
+        return nil if parsed.nil? || parsed <= 0
+
+        parsed
+      end
+
+      def queue_refresh_deferred?
+        @next_queue_refresh_at && Time.now < @next_queue_refresh_at
+      end
+
+      def schedule_queue_refresh_retry(retry_after_seconds)
+        return unless retry_after_seconds && retry_after_seconds.positive?
+
+        @next_queue_refresh_at = Time.now + retry_after_seconds
+      end
+
+      def queue_rate_limit_message(retry_after_seconds)
+        return 'Queue refresh rate-limited by Spotify' unless retry_after_seconds && retry_after_seconds.positive?
+
+        "Queue refresh rate-limited by Spotify, retrying in #{retry_after_seconds}s"
       end
     end
   end

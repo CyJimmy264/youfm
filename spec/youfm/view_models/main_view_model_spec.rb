@@ -14,7 +14,12 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
       cached_playlist_tracks: nil
     )
   end
-  let(:recommendation_generator) { instance_double(YouFM::Services::RecommendationGenerator) }
+  let(:recommendation_generator) do
+    instance_double(
+      YouFM::Services::RecommendationGenerator,
+      similar_artist_pool_limit: 200
+    )
+  end
   let(:lastfm_authenticator) do
     instance_double(
       YouFM::Services::LastfmAuthenticator,
@@ -86,6 +91,27 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     expect(source).to have_received(:resume)
   end
 
+  it 'updates the similar artist pool limit through the recommendation generator' do
+    allow(recommendation_generator).to receive(:similar_artist_pool_limit=)
+
+    view_model = build_view_model
+    result = view_model.update_similar_artist_pool_limit('350')
+
+    expect(result).to eq(350)
+    expect(recommendation_generator).to have_received(:similar_artist_pool_limit=).with(350)
+    expect(view_model.state.status_message).to eq('Similar artist pool limit set to 350')
+  end
+
+  it 'rejects invalid similar artist pool limits' do
+    allow(recommendation_generator).to receive(:similar_artist_pool_limit=)
+
+    view_model = build_view_model
+    result = view_model.update_similar_artist_pool_limit('0')
+
+    expect(result).to eq('Similar artist pool limit must be a positive integer')
+    expect(recommendation_generator).not_to have_received(:similar_artist_pool_limit=)
+  end
+
   it 'connects Spotify and refreshes device and playlist state' do
     device = YouFM::Models::Device.new(id: 'd1', name: 'MacBook', type: 'Computer', active: true, restricted: false)
     playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 10, snapshot_id: 'snap-1')
@@ -105,6 +131,23 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     expect(view_model.state.connected).to be(true)
     expect(view_model.state.devices).to eq([device])
     expect(view_model.state.playlists).to eq([playlist])
+  end
+
+  it 'shows the transferred active device even when Spotify returns no active playback item' do
+    old_device = YouFM::Models::Device.new(id: 'd1', name: 'MacBook', type: 'Computer', active: false, restricted: false)
+    target_device = YouFM::Models::Device.new(id: 'd2', name: 'iPhone', type: 'Smartphone', active: true, restricted: false)
+
+    allow(source).to receive(:transfer_playback).with(target_device)
+
+    view_model = build_view_model
+    view_model.state.devices = [old_device, target_device]
+    view_model.select_device_index(1)
+    view_model.activate_selected_device
+
+    expect(source).to have_received(:transfer_playback).with(target_device)
+    expect(view_model.state.device_name).to eq('iPhone')
+    expect(view_model.state.devices.map(&:active)).to eq([false, true])
+    expect(view_model.state.status_message).to eq('Transferred playback to iPhone')
   end
 
   it 'loads selected playlist tracks into the tracks list' do
@@ -129,6 +172,18 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
 
     expect(view_model.state.search_results).to eq([track])
     expect(view_model.state.tracks_title).to eq('Playlist: Daily')
+  end
+
+  it 'backs off queue refresh until Retry-After elapses after Spotify rate limiting' do
+    rate_limited_error = YouFM::Services::SpotifyClient::RateLimitedError.new('Too many requests', retry_after_seconds: 17)
+    allow(source).to receive(:queue).and_raise(rate_limited_error)
+
+    view_model = build_view_model
+    view_model.refresh_queue
+    view_model.refresh_queue
+
+    expect(source).to have_received(:queue).once
+    expect(view_model.state.status_message).to eq('Queue refresh rate-limited by Spotify, retrying in 17s')
   end
 
   it 'switches tracks panel into playlist loading state immediately' do
