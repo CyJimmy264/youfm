@@ -31,6 +31,7 @@ RSpec.describe YouFM::Container do
     lastfm_client = instance_double(YouFM::Services::LastfmClient)
     lastfm_authenticator = instance_double(YouFM::Services::LastfmAuthenticator)
     recommendation_generator = instance_double(YouFM::Services::RecommendationGenerator)
+    recommendation_coordinator = instance_double(YouFM::Services::RecommendationCoordinator)
     source = instance_double(YouFM::Services::MusicSources::SpotifySource)
     view_model = instance_double(YouFM::ViewModels::MainViewModel)
     main_window = instance_double(YouFM::Views::MainWindow)
@@ -75,9 +76,13 @@ RSpec.describe YouFM::Container do
       spotify_client: spotify_client
     ).and_return(recommendation_generator)
     allow(YouFM::Services::MusicSources::SpotifySource).to receive(:new).with(client: spotify_client).and_return(source)
+    allow(YouFM::Services::RecommendationCoordinator).to receive(:new).with(
+      recommendation_generator: recommendation_generator,
+      source: source
+    ).and_return(recommendation_coordinator)
     allow(YouFM::ViewModels::MainViewModel).to receive(:new).with(
       source: source,
-      recommendation_generator: recommendation_generator,
+      recommendation_coordinator: recommendation_coordinator,
       lastfm_authenticator: lastfm_authenticator
     ).and_return(view_model)
     allow(YouFM::Views::MainWindow).to receive(:new).with(

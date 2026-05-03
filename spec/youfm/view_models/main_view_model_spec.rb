@@ -20,6 +20,12 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
       similar_artist_pool_limit: 200
     )
   end
+  let(:recommendation_coordinator) do
+    YouFM::Services::RecommendationCoordinator.new(
+      recommendation_generator: recommendation_generator,
+      source: source
+    )
+  end
   let(:lastfm_authenticator) do
     instance_double(
       YouFM::Services::LastfmAuthenticator,
@@ -38,7 +44,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
   def build_view_model
     described_class.new(
       source: source,
-      recommendation_generator: recommendation_generator,
+      recommendation_coordinator: recommendation_coordinator,
       lastfm_authenticator: lastfm_authenticator
     )
   end

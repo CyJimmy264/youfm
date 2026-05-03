@@ -15,7 +15,7 @@ module YouFM
       LOADER_FRAMES = ['Loading   ', 'Loading.  ', 'Loading.. ', 'Loading...'].freeze
 
       def initialize(
-        view_model: ViewModels::MainViewModel.new(source: Services::MusicSources::SpotifySource.new(client: Services::SpotifyClient.new(access_token: nil))),
+        view_model:,
         theme: Styles::Theme.new(name: 'dark'),
         settings_store: Models::NullSettingsStore.new
       )

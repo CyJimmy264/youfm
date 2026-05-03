@@ -1,0 +1,91 @@
+# frozen_string_literal: true
+
+module YouFM
+  module Services
+    class RecommendationCoordinator
+      def initialize(recommendation_generator:, source:)
+        @recommendation_generator = recommendation_generator
+        @source = source
+        @in_flight = false
+      end
+
+      def similar_artist_pool_limit
+        recommendation_generator.similar_artist_pool_limit
+      end
+
+      def similar_artist_pool_limit=(value)
+        recommendation_generator.similar_artist_pool_limit = value
+      end
+
+      def reset
+        @in_flight = false
+      end
+
+      def enqueue(seed_tracks:, excluded_track_ids:, playlist_name:, queue_tracks:, trigger:, append_track:, update_status:)
+        return recommendation_status(trigger, :missing_seed_tracks, update_status:) if seed_tracks.empty?
+
+        recommended_track = recommendation_generator.generate_from_playlist(
+          seed_tracks,
+          excluded_track_ids: excluded_track_ids,
+          playlist_name: playlist_name
+        )
+        return recommendation_status(trigger, :not_found, update_status:) unless recommended_track
+        if queue_tracks.any? { |track| track.id == recommended_track.id }
+          return recommendation_status(trigger, :duplicate, update_status:)
+        end
+
+        source.add_to_queue(recommended_track)
+        append_track.call(recommended_track)
+        message = "Added recommendation to Spotify queue: #{recommended_track.display_label}"
+        update_status.call(message)
+        message
+      end
+
+      def enqueue_async(**kwargs)
+        if @in_flight
+          puts "[youfm] recommendation skipped: trigger=#{kwargs.fetch(:trigger)} reason=already_in_flight"
+          return
+        end
+
+        @in_flight = true
+        Thread.new do
+          enqueue(**kwargs)
+        ensure
+          @in_flight = false
+        end
+      end
+
+      private
+
+      attr_reader :recommendation_generator, :source
+
+      def recommendation_status(trigger, reason, update_status:)
+        prefix =
+          case trigger
+          when :manual
+            'Recommendation skipped'
+          when :playback_change
+            'Auto-recommendation skipped'
+          else
+            'Recommendation skipped'
+          end
+
+        details =
+          case reason
+          when :missing_seed_tracks
+            'no seed tracks are loaded'
+          when :not_found
+            'Last.fm/Spotify did not return a suitable track'
+          when :duplicate
+            'the candidate is already in the queue'
+          else
+            'unknown reason'
+          end
+
+        message = "#{prefix}: #{details}"
+        update_status.call(message)
+        message
+      end
+    end
+  end
+end

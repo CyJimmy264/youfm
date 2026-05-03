@@ -78,10 +78,16 @@ module YouFM
           spotify_client: fetch(:spotify_client)
         )
       end
+      register(:recommendation_coordinator) do
+        Services::RecommendationCoordinator.new(
+          recommendation_generator: fetch(:recommendation_generator),
+          source: fetch(:music_source)
+        )
+      end
       register(:main_view_model) do
         ViewModels::MainViewModel.new(
           source: fetch(:music_source),
-          recommendation_generator: fetch(:recommendation_generator),
+          recommendation_coordinator: fetch(:recommendation_coordinator),
           lastfm_authenticator: fetch(:lastfm_authenticator)
         )
       end

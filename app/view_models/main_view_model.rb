@@ -30,9 +30,9 @@ module YouFM
         keyword_init: true
       )
 
-      def initialize(source:, recommendation_generator:, lastfm_authenticator:)
+      def initialize(source:, recommendation_coordinator:, lastfm_authenticator:)
         @source = source
-        @recommendation_generator = recommendation_generator
+        @recommendation_coordinator = recommendation_coordinator
         @lastfm_authenticator = lastfm_authenticator
         @queue_mutex = Mutex.new
         @last_playing_track_id = nil
@@ -43,7 +43,6 @@ module YouFM
         @playlist_tracks_has_more = false
         @playlist_tracks_loading = false
         @next_queue_refresh_at = nil
-        @recommendation_in_flight = false
         @state = State.new(
           source_name: source.name,
           configured: source.configured?,
@@ -114,7 +113,7 @@ module YouFM
         @last_playing_track_id = nil
         @recently_played_track_ids = []
         @last_recommendation_seed_track_id = nil
-        @recommendation_in_flight = false
+        recommendation_coordinator.reset
         @next_queue_refresh_at = nil
         reset_playlist_pagination
         state.devices = []
@@ -254,7 +253,7 @@ module YouFM
         source.play_track(track)
         remember_playing_track(track.id)
         schedule_recommendation_for_track(track.id)
-        enqueue_recommendation_async(seed_tracks: recommendation_seed_tracks, trigger: :manual)
+        enqueue_recommendation_async(trigger: :manual)
         state.playing = true
         state.now_playing = "Playing: #{track.display_label}"
         update_status('Playback command sent to Spotify')
@@ -305,7 +304,7 @@ module YouFM
         remember_playing_track(track.id)
         remove_track_from_local_queue(track.id)
         schedule_recommendation_for_track(track.id)
-        enqueue_recommendation_async(seed_tracks: recommendation_seed_tracks, trigger: :manual)
+        enqueue_recommendation_async(trigger: :manual)
         state.playing = true
         state.now_playing = "Playing: #{track.display_label}"
         update_status('Playback command sent to Spotify')
@@ -349,20 +348,20 @@ module YouFM
       end
 
       def generate_recommendation
-        enqueue_recommendation(seed_tracks: recommendation_seed_tracks, trigger: :manual)
+        enqueue_recommendation(trigger: :manual)
       rescue StandardError => e
         update_status("Recommendation failed: #{friendly_error_message(e)}")
       end
 
       def similar_artist_pool_limit
-        recommendation_generator.similar_artist_pool_limit
+        recommendation_coordinator.similar_artist_pool_limit
       end
 
       def set_similar_artist_pool_limit(value)
         parsed = normalize_similar_artist_pool_limit(value)
         return nil unless parsed
 
-        recommendation_generator.similar_artist_pool_limit = parsed
+        recommendation_coordinator.similar_artist_pool_limit = parsed
         parsed
       end
 
@@ -408,7 +407,7 @@ module YouFM
 
       private
 
-      attr_reader :source, :recommendation_generator, :lastfm_authenticator
+      attr_reader :source, :recommendation_coordinator, :lastfm_authenticator
 
       def selected_track
         return nil if state.selected_index.nil?
@@ -434,24 +433,8 @@ module YouFM
         state.queue_tracks[state.selected_queue_index]
       end
 
-      def enqueue_recommendation(seed_tracks:, trigger:)
-        return recommendation_status(trigger, :missing_seed_tracks) if seed_tracks.empty?
-
-        recommended_track = recommendation_generator.generate_from_playlist(
-          seed_tracks,
-          excluded_track_ids: blocked_recommendation_track_ids,
-          playlist_name: recommendation_playlist_name
-        )
-        return recommendation_status(trigger, :not_found) unless recommended_track
-
-        # Prevent adding a recommendation if it's already in the queue
-        return recommendation_status(trigger, :duplicate) if state.queue_tracks.any? { |track| track.id == recommended_track.id }
-
-        source.add_to_queue(recommended_track)
-        append_recommended_track_to_local_queue(recommended_track)
-        message = "Added recommendation to Spotify queue: #{recommended_track.display_label}"
-        update_status(message)
-        message
+      def enqueue_recommendation(trigger:)
+        recommendation_coordinator.enqueue(**recommendation_context(trigger))
       end
 
       def load_selected_playlist_tracks(&on_loaded)
@@ -630,22 +613,12 @@ module YouFM
 
         schedule_recommendation_for_track(current_track_id)
         puts "[youfm] playback track changed: previous=#{previous_track_id || 'none'} current=#{current_track_id}; scheduling recommendation"
-        enqueue_recommendation_async(seed_tracks: recommendation_seed_tracks, trigger: :playback_change)
+        enqueue_recommendation_async(trigger: :playback_change)
         :recommendation_queued
       end
 
-      def enqueue_recommendation_async(seed_tracks:, trigger:)
-        if @recommendation_in_flight
-          puts "[youfm] recommendation skipped: trigger=#{trigger} reason=already_in_flight"
-          return
-        end
-
-        @recommendation_in_flight = true
-        Thread.new do
-          enqueue_recommendation(seed_tracks:, trigger:)
-        ensure
-          @recommendation_in_flight = false
-        end
+      def enqueue_recommendation_async(trigger:)
+        recommendation_coordinator.enqueue_async(**recommendation_context(trigger))
       end
 
       def track_changed?(current_track_id, previous_track_id)
@@ -690,32 +663,16 @@ module YouFM
           end
       end
 
-      def recommendation_status(trigger, reason)
-        prefix =
-          case trigger
-          when :manual
-            'Recommendation skipped'
-          when :playback_change
-            'Auto-recommendation skipped'
-          else
-            'Recommendation skipped'
-          end
-
-        details =
-          case reason
-          when :missing_seed_tracks
-            'no seed tracks are loaded'
-          when :not_found
-            'Last.fm/Spotify did not return a suitable track'
-          when :duplicate
-            'the candidate is already in the queue'
-          else
-            'unknown reason'
-          end
-
-        message = "#{prefix}: #{details}"
-        update_status(message)
-        message
+      def recommendation_context(trigger)
+        {
+          seed_tracks: recommendation_seed_tracks,
+          excluded_track_ids: blocked_recommendation_track_ids,
+          playlist_name: recommendation_playlist_name,
+          queue_tracks: state.queue_tracks,
+          trigger: trigger,
+          append_track: method(:append_recommended_track_to_local_queue),
+          update_status: method(:update_status)
+        }
       end
 
       def reset_playlist_pagination
