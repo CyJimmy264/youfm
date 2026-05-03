@@ -3,9 +3,10 @@
 module YouFM
   module Services
     class RecommendationCoordinator
-      def initialize(recommendation_generator:, source:)
+      def initialize(recommendation_generator:, source:, seed_store:)
         @recommendation_generator = recommendation_generator
         @source = source
+        @seed_store = seed_store
         @in_flight = false
       end
 
@@ -24,18 +25,22 @@ module YouFM
       def enqueue(seed_tracks:, excluded_track_ids:, playlist_name:, queue_tracks:, trigger:, append_track:, update_status:)
         return recommendation_status(trigger, :missing_seed_tracks, update_status:) if seed_tracks.empty?
 
-        recommended_track = recommendation_generator.generate_from_playlist(
+        recommendation = recommendation_generator.generate_with_seed(
           seed_tracks,
           excluded_track_ids: excluded_track_ids,
           playlist_name: playlist_name
         )
+        recommended_track = recommendation&.track
         return recommendation_status(trigger, :not_found, update_status:) unless recommended_track
+
+        seed_label = seed_label_for(recommendation.seed_track, playlist_name)
         if queue_tracks.any? { |track| track.id == recommended_track.id }
           return recommendation_status(trigger, :duplicate, update_status:)
         end
 
         source.add_to_queue(recommended_track)
-        append_track.call(recommended_track)
+        seed_store.save(recommended_track.id, seed_label, label: recommended_track.display_label)
+        append_track.call(recommended_track, seed_label)
         message = "Added recommendation to Spotify queue: #{recommended_track.display_label}"
         update_status.call(message)
         message
@@ -57,7 +62,15 @@ module YouFM
 
       private
 
-      attr_reader :recommendation_generator, :source
+      attr_reader :recommendation_generator, :source, :seed_store
+
+      def seed_label_for(track, playlist_name)
+        label = "#{track.title} — #{track.artist_line}"
+        playlist = playlist_name.to_s
+        return label if playlist.empty?
+
+        "#{label} (Взят из плейлиста: #{playlist})"
+      end
 
       def recommendation_status(trigger, reason, update_status:)
         prefix =

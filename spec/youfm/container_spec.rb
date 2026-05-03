@@ -23,6 +23,7 @@ RSpec.describe YouFM::Container do
     settings_store = instance_double(YouFM::Services::SettingsStore)
     token_store = instance_double(YouFM::Services::SpotifyTokenStore)
     spotify_playlist_cache = instance_double(YouFM::Services::SpotifyPlaylistCache)
+    recommendation_seed_store = instance_double(YouFM::Services::RecommendationSeedStore)
     lastfm_token_store = instance_double(YouFM::Services::LastfmTokenStore, load: { 'key' => 'session-key' })
     lastfm_similar_artists_cache = instance_double(YouFM::Services::LastfmSimilarArtistsCache)
     browser_launcher = instance_double(YouFM::Services::BrowserLauncher)
@@ -40,6 +41,7 @@ RSpec.describe YouFM::Container do
     allow(YouFM::Services::SettingsStore).to receive(:new).and_return(settings_store)
     allow(YouFM::Services::SpotifyTokenStore).to receive(:new).and_return(token_store)
     allow(YouFM::Services::SpotifyPlaylistCache).to receive(:new).and_return(spotify_playlist_cache)
+    allow(YouFM::Services::RecommendationSeedStore).to receive(:new).and_return(recommendation_seed_store)
     allow(YouFM::Services::LastfmTokenStore).to receive(:new).and_return(lastfm_token_store)
     allow(YouFM::Services::LastfmSimilarArtistsCache).to receive(:new).and_return(lastfm_similar_artists_cache)
     allow(YouFM::Services::BrowserLauncher).to receive(:new).and_return(browser_launcher)
@@ -78,11 +80,13 @@ RSpec.describe YouFM::Container do
     allow(YouFM::Services::MusicSources::SpotifySource).to receive(:new).with(client: spotify_client).and_return(source)
     allow(YouFM::Services::RecommendationCoordinator).to receive(:new).with(
       recommendation_generator: recommendation_generator,
-      source: source
+      source: source,
+      seed_store: recommendation_seed_store
     ).and_return(recommendation_coordinator)
     allow(YouFM::ViewModels::MainViewModel).to receive(:new).with(
       source: source,
       recommendation_coordinator: recommendation_coordinator,
+      recommendation_seed_store: recommendation_seed_store,
       lastfm_authenticator: lastfm_authenticator
     ).and_return(view_model)
     allow(YouFM::Views::MainWindow).to receive(:new).with(

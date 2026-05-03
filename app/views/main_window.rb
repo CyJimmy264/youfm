@@ -42,7 +42,7 @@ module YouFM
 
       attr_reader :view_model, :theme, :settings_store, :window, :search_input, :results_list, :playlists_list,
                   :queue_list, :device_picker, :status_label, :auth_label, :lastfm_auth_label, :device_label, :now_playing_label,
-                  :toggle_button, :theme_button, :connect_button, :disconnect_button, :connect_lastfm_button,
+                  :recommendation_seed_label, :toggle_button, :theme_button, :connect_button, :disconnect_button, :connect_lastfm_button,
                   :disconnect_lastfm_button, :tracks_title_label, :next_button, :similar_artist_pool_limit_input
 
       def build_window
@@ -261,11 +261,15 @@ module YouFM
           @status_label = build_label(widget, 'status_label', '')
           @device_label = build_label(widget, 'device_label', '')
           @now_playing_label = build_label(widget, 'now_playing_label', '')
+          make_label_selectable(now_playing_label)
+          @recommendation_seed_label = build_label(widget, 'recommendation_seed_label', '')
+          make_label_selectable(recommendation_seed_label)
           layout.add_widget(auth_label)
           layout.add_widget(lastfm_auth_label)
           layout.add_widget(status_label)
           layout.add_widget(device_label)
           layout.add_widget(now_playing_label)
+          layout.add_widget(recommendation_seed_label)
         end
       end
 
@@ -274,6 +278,13 @@ module YouFM
           label.object_name = object_name
           label.text = text
         end
+      end
+
+      def make_label_selectable(label)
+        flags = Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard
+        label.text_interaction_flags = flags
+      rescue NoMethodError
+        label.set_text_interaction_flags(flags)
       end
 
       def build_button(parent, object_name, text)
@@ -558,6 +569,11 @@ module YouFM
         status_label.text = "Status: #{state.status_message}"
         device_label.text = state.device_name.to_s.empty? ? 'Device: no active device' : "Device: #{state.device_name}"
         now_playing_label.text = "Now: #{state.now_playing}"
+        recommendation_seed_label.text = "Recommendation Seed: #{displayed_recommendation_seed(state)}"
+      end
+
+      def displayed_recommendation_seed(state)
+        state.recommendation_seed
       end
 
       def render_results(state)

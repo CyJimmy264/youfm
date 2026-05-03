@@ -23,21 +23,26 @@ module YouFM
         :selected_playlist_index,
         :queue_tracks,
         :selected_queue_index,
+        :queue_recommendation_seeds,
         :status_message,
         :device_name,
         :now_playing,
+        :recommendation_seed,
+        :selected_queue_recommendation_seed,
         :playing,
         keyword_init: true
       )
 
-      def initialize(source:, recommendation_coordinator:, lastfm_authenticator:)
+      def initialize(source:, recommendation_coordinator:, recommendation_seed_store:, lastfm_authenticator:)
         @source = source
         @recommendation_coordinator = recommendation_coordinator
+        @recommendation_seed_store = recommendation_seed_store
         @lastfm_authenticator = lastfm_authenticator
         @queue_mutex = Mutex.new
         @last_playing_track_id = nil
         @recently_played_track_ids = []
         @last_recommendation_seed_track_id = nil
+        @now_playing_recommendation_seeds = {}
         @playlist_tracks_playlist_id = nil
         @playlist_tracks_offset = 0
         @playlist_tracks_has_more = false
@@ -61,9 +66,12 @@ module YouFM
           selected_playlist_index: nil,
           queue_tracks: [],
           selected_queue_index: nil,
+          queue_recommendation_seeds: {},
           status_message: initial_status,
           device_name: nil,
           now_playing: 'No active playback',
+          recommendation_seed: 'None',
+          selected_queue_recommendation_seed: 'None',
           playing: false
         )
       end
@@ -113,6 +121,7 @@ module YouFM
         @last_playing_track_id = nil
         @recently_played_track_ids = []
         @last_recommendation_seed_track_id = nil
+        @now_playing_recommendation_seeds = {}
         recommendation_coordinator.reset
         @next_queue_refresh_at = nil
         reset_playlist_pagination
@@ -121,12 +130,15 @@ module YouFM
         state.playlists = []
         state.selected_playlist_index = nil
         state.queue_tracks = []
+        state.queue_recommendation_seeds = {}
         state.search_results = []
         state.selected_index = nil
         state.tracks_loading_more = false
         state.tracks_title = 'Tracks'
         state.device_name = nil
         state.now_playing = 'No active playback'
+        state.recommendation_seed = 'None'
+        state.selected_queue_recommendation_seed = 'None'
         state.playing = false
         sync_connection_state!
         update_status('Spotify session cleared')
@@ -165,6 +177,7 @@ module YouFM
         state.now_playing = playback.status_label
         state.playing = playback.playing
         playback_change_message = handle_playback_track_change(playback.track, previous_track_id:)
+        state.recommendation_seed = recommendation_seed_for_playback_track(playback.track)
         sync_connection_state!
         return if playback_change_message == :recommendation_queued
 
@@ -201,6 +214,7 @@ module YouFM
 
         @queue_mutex.synchronize do
           state.queue_tracks = filtered_queue_tracks(source.queue)
+          retain_queue_recommendation_seeds!
           normalize_selected_queue_index!
         end
         @next_queue_refresh_at = nil
@@ -244,6 +258,7 @@ module YouFM
         return if index >= state.queue_tracks.length
 
         state.selected_queue_index = index
+        update_selected_queue_recommendation_seed
       end
 
       def play_selected
@@ -252,7 +267,7 @@ module YouFM
 
         source.play_track(track)
         remember_playing_track(track.id)
-        schedule_recommendation_for_track(track.id)
+        schedule_recommendation_for_track(track)
         enqueue_recommendation_async(trigger: :manual)
         state.playing = true
         state.now_playing = "Playing: #{track.display_label}"
@@ -303,7 +318,7 @@ module YouFM
         source.play_track(track)
         remember_playing_track(track.id)
         remove_track_from_local_queue(track.id)
-        schedule_recommendation_for_track(track.id)
+        schedule_recommendation_for_track(track)
         enqueue_recommendation_async(trigger: :manual)
         state.playing = true
         state.now_playing = "Playing: #{track.display_label}"
@@ -407,7 +422,7 @@ module YouFM
 
       private
 
-      attr_reader :source, :recommendation_coordinator, :lastfm_authenticator
+      attr_reader :source, :recommendation_coordinator, :recommendation_seed_store, :lastfm_authenticator
 
       def selected_track
         return nil if state.selected_index.nil?
@@ -583,10 +598,12 @@ module YouFM
         state.status_message = message
       end
 
-      def append_recommended_track_to_local_queue(track)
+      def append_recommended_track_to_local_queue(track, seed_label)
         @queue_mutex.synchronize do
+          state.queue_recommendation_seeds = state.queue_recommendation_seeds.merge(track.id.to_s => seed_label.to_s)
           state.queue_tracks = filtered_queue_tracks([*state.queue_tracks, track])
           normalize_selected_queue_index!
+          update_selected_queue_recommendation_seed
         end
       end
 
@@ -598,8 +615,17 @@ module YouFM
         selected_playlist&.name || state.tracks_title
       end
 
-      def schedule_recommendation_for_track(track_id)
-        @last_recommendation_seed_track_id = track_id.to_s
+      def schedule_recommendation_for_track(track)
+        @last_recommendation_seed_track_id = track.id.to_s
+      end
+
+      def recommendation_seed_for_playback_track(track)
+        return 'None' unless track
+
+        normalized_track_id = track.id.to_s
+        seed = @now_playing_recommendation_seeds[normalized_track_id] || recommendation_seed_store.fetch(normalized_track_id)
+        @now_playing_recommendation_seeds[normalized_track_id] = seed if seed
+        seed || 'None'
       end
 
       def handle_playback_track_change(track, previous_track_id:)
@@ -607,11 +633,12 @@ module YouFM
         return if current_track_id.empty?
 
         remember_playing_track(current_track_id)
+        remember_now_playing_recommendation_seed(current_track_id)
         remove_track_from_local_queue(current_track_id)
         return unless track_changed?(current_track_id, previous_track_id)
         return if @last_recommendation_seed_track_id == current_track_id
 
-        schedule_recommendation_for_track(current_track_id)
+        schedule_recommendation_for_track(track)
         puts "[youfm] playback track changed: previous=#{previous_track_id || 'none'} current=#{current_track_id}; scheduling recommendation"
         enqueue_recommendation_async(trigger: :playback_change)
         :recommendation_queued
@@ -638,6 +665,11 @@ module YouFM
         tracks.reject { |track| blocked_track_ids.include?(track.id.to_s) }
       end
 
+      def remember_now_playing_recommendation_seed(track_id)
+        seed = state.queue_recommendation_seeds[track_id]
+        @now_playing_recommendation_seeds[track_id] = seed if seed
+      end
+
       def blocked_recommendation_track_ids
         (state.queue_tracks.map { |track| track.id.to_s } + @recently_played_track_ids).uniq
       end
@@ -648,7 +680,11 @@ module YouFM
 
         @queue_mutex.synchronize do
           state.queue_tracks = state.queue_tracks.reject { |track| track.id.to_s == normalized_track_id }
+          state.queue_recommendation_seeds = state.queue_recommendation_seeds.reject do |track_id, _seed|
+            track_id == normalized_track_id
+          end
           normalize_selected_queue_index!
+          update_selected_queue_recommendation_seed
         end
       end
 
@@ -661,6 +697,18 @@ module YouFM
           else
             state.selected_queue_index
           end
+      end
+
+      def retain_queue_recommendation_seeds!
+        visible_track_ids = state.queue_tracks.map { |track| track.id.to_s }
+        state.queue_recommendation_seeds = state.queue_recommendation_seeds.slice(*visible_track_ids)
+        update_selected_queue_recommendation_seed
+      end
+
+      def update_selected_queue_recommendation_seed
+        track = selected_queued_track
+        seed = track && state.queue_recommendation_seeds[track.id.to_s]
+        state.selected_queue_recommendation_seed = seed.to_s.empty? ? 'None' : seed
       end
 
       def recommendation_context(trigger)

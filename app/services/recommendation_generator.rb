@@ -9,6 +9,7 @@ module YouFM
       SIMILAR_ARTIST_WINDOW_SIZE = 10
       TOP_TRACK_WINDOW_SIZE = 7
       TOP_TRACK_ATTEMPTS_PER_ARTIST = 3
+      Recommendation = Struct.new(:track, :seed_track, keyword_init: true)
 
       def initialize(lastfm_client:, spotify_client:, similar_artist_pool_limit: DEFAULT_SIMILAR_ARTIST_POOL_LIMIT)
         @lastfm_client = lastfm_client
@@ -23,6 +24,10 @@ module YouFM
       end
 
       def generate_from_playlist(seed_tracks, excluded_track_ids: [], playlist_name: nil)
+        generate_with_seed(seed_tracks, excluded_track_ids: excluded_track_ids, playlist_name: playlist_name)&.track
+      end
+
+      def generate_with_seed(seed_tracks, excluded_track_ids: [], playlist_name: nil)
         return nil if seed_tracks.empty?
 
         blocked_track_ids = excluded_track_ids.map(&:to_s).reject(&:empty?).to_set
@@ -48,7 +53,7 @@ module YouFM
               end
               if candidate
                 puts "[youfm] recommendation generated: playlist=#{playlist_name || 'unknown'} seed=#{seed_track.display_label.inspect} result=#{candidate.display_label.inspect}"
-                return candidate
+                return Recommendation.new(track: candidate, seed_track: seed_track)
               end
             end
           end

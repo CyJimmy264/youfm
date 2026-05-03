@@ -29,6 +29,7 @@ module YouFM
       register(:settings_store) { Services::SettingsStore.new }
       register(:spotify_token_store) { Services::SpotifyTokenStore.new }
       register(:spotify_playlist_cache) { Services::SpotifyPlaylistCache.new }
+      register(:recommendation_seed_store) { Services::RecommendationSeedStore.new }
       register(:browser_launcher) { Services::BrowserLauncher.new }
       register(:spotify_authenticator) do
         Services::SpotifyAuthenticator.new(
@@ -81,13 +82,15 @@ module YouFM
       register(:recommendation_coordinator) do
         Services::RecommendationCoordinator.new(
           recommendation_generator: fetch(:recommendation_generator),
-          source: fetch(:music_source)
+          source: fetch(:music_source),
+          seed_store: fetch(:recommendation_seed_store)
         )
       end
       register(:main_view_model) do
         ViewModels::MainViewModel.new(
           source: fetch(:music_source),
           recommendation_coordinator: fetch(:recommendation_coordinator),
+          recommendation_seed_store: fetch(:recommendation_seed_store),
           lastfm_authenticator: fetch(:lastfm_authenticator)
         )
       end

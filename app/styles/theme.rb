@@ -20,7 +20,8 @@ module YouFM
           QLabel#section_label,
           QLabel#status_label,
           QLabel#device_label,
-          QLabel#now_playing_label {
+          QLabel#now_playing_label,
+          QLabel#recommendation_seed_label {
             color: #b4bdc7;
           }
 
@@ -93,7 +94,8 @@ module YouFM
           QLabel#section_label,
           QLabel#status_label,
           QLabel#device_label,
-          QLabel#now_playing_label {
+          QLabel#now_playing_label,
+          QLabel#recommendation_seed_label {
             color: #4d5561;
           }
 

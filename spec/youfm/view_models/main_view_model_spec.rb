@@ -23,9 +23,11 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
   let(:recommendation_coordinator) do
     YouFM::Services::RecommendationCoordinator.new(
       recommendation_generator: recommendation_generator,
-      source: source
+      source: source,
+      seed_store: recommendation_seed_store
     )
   end
+  let(:recommendation_seed_store) { instance_double(YouFM::Services::RecommendationSeedStore, fetch: nil, save: nil) }
   let(:lastfm_authenticator) do
     instance_double(
       YouFM::Services::LastfmAuthenticator,
@@ -45,8 +47,13 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     described_class.new(
       source: source,
       recommendation_coordinator: recommendation_coordinator,
+      recommendation_seed_store: recommendation_seed_store,
       lastfm_authenticator: lastfm_authenticator
     )
+  end
+
+  def build_recommendation(track:, seed_track:)
+    YouFM::Services::RecommendationGenerator::Recommendation.new(track: track, seed_track: seed_track)
   end
 
   it 'bootstraps from a saved session without opening auth flow' do
@@ -408,7 +415,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     )
     allow(source).to receive(:play_track)
     allow(source).to receive(:add_to_queue).with(recommended_track)
-    allow(recommendation_generator).to receive(:generate_from_playlist).and_return(recommended_track)
+    allow(recommendation_generator).to receive(:generate_with_seed).and_return(build_recommendation(track: recommended_track, seed_track: current_track))
 
     view_model = build_view_model
     view_model.state.search_results = [current_track]
@@ -416,6 +423,13 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     view_model.play_selected
 
     expect(view_model.state.queue_tracks).to include(recommended_track)
+    expect(view_model.state.recommendation_seed).to eq('None')
+    expect(view_model.state.queue_recommendation_seeds).to eq('2' => 'Track — Artist (Взят из плейлиста: Tracks)')
+    expect(recommendation_seed_store).to have_received(:save).with(
+      '2',
+      'Track — Artist (Взят из плейлиста: Tracks)',
+      label: 'Recommended - Another Artist'
+    )
     expect(source).to have_received(:add_to_queue).with(recommended_track)
   end
 
@@ -438,7 +452,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     )
 
     allow(source).to receive(:add_to_queue).with(recommended_track)
-    allow(recommendation_generator).to receive(:generate_from_playlist).and_return(recommended_track)
+    allow(recommendation_generator).to receive(:generate_with_seed).and_return(build_recommendation(track: recommended_track, seed_track: current_track))
 
     view_model = build_view_model
     view_model.state.search_results = [current_track]
@@ -472,7 +486,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
       YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: old_track, playing: true, progress_ms: 0)
     )
     allow(source).to receive(:queue).and_return([next_track])
-    allow(recommendation_generator).to receive(:generate_from_playlist).and_return(nil)
+    allow(recommendation_generator).to receive(:generate_with_seed).and_return(nil)
 
     view_model = build_view_model
     view_model.state.search_results = [old_track]
@@ -515,7 +529,10 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     )
     playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 2, snapshot_id: 'snap-1')
     allow(source).to receive(:add_to_queue).with(recommended_track)
-    allow(recommendation_generator).to receive(:generate_from_playlist).and_return(nil, recommended_track)
+    allow(recommendation_generator).to receive(:generate_with_seed).and_return(
+      nil,
+      build_recommendation(track: recommended_track, seed_track: next_track)
+    )
 
     view_model = build_view_model
     view_model.state.playlists = [playlist]
@@ -527,6 +544,138 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
 
     expect(source).to have_received(:add_to_queue).with(recommended_track).once
     expect(view_model.state.queue_tracks).to include(recommended_track)
+    expect(view_model.state.recommendation_seed).to eq('None')
+    expect(view_model.state.queue_recommendation_seeds).to eq('3' => 'Next Track — Artist (Взят из плейлиста: Daily)')
+  end
+
+  it 'shows the recommendation seed for the selected queued recommendation' do
+    current_track = YouFM::Models::Track.new(
+      id: '1',
+      title: 'Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:1',
+      duration_ms: 1
+    )
+    recommended_track = YouFM::Models::Track.new(
+      id: '2',
+      title: 'Recommended',
+      artists: ['Another Artist'],
+      album: 'Album 2',
+      uri: 'spotify:track:2',
+      duration_ms: 1
+    )
+
+    allow(source).to receive(:play_track)
+    allow(source).to receive(:add_to_queue).with(recommended_track)
+    allow(recommendation_generator).to receive(:generate_with_seed).and_return(build_recommendation(track: recommended_track, seed_track: current_track))
+
+    view_model = build_view_model
+    view_model.state.search_results = [current_track]
+    view_model.state.selected_index = 0
+    view_model.play_selected
+    view_model.select_queue_index(0)
+
+    expect(view_model.state.selected_queue_recommendation_seed).to eq('Track — Artist (Взят из плейлиста: Tracks)')
+  end
+
+  it 'shows a persisted recommendation seed for the current playback track' do
+    recommended_track = YouFM::Models::Track.new(
+      id: 'recommended',
+      title: 'Recommended',
+      artists: ['Another Artist'],
+      album: 'Album 2',
+      uri: 'spotify:track:recommended',
+      duration_ms: 1
+    )
+    seed_label = 'The Great Undressing — Jenny Hval (Взят из плейлиста: Vibed)'
+
+    allow(source).to receive(:current_playback).and_return(
+      YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: recommended_track, playing: true, progress_ms: 0)
+    )
+    allow(recommendation_generator).to receive(:generate_with_seed).and_return(nil)
+    allow(recommendation_seed_store).to receive(:fetch).with('recommended').and_return(seed_label)
+
+    view_model = build_view_model
+    view_model.state.search_results = [recommended_track]
+    view_model.refresh_playback
+
+    expect(view_model.state.now_playing).to eq('Playing: Recommended - Another Artist')
+    expect(view_model.state.recommendation_seed).to eq(seed_label)
+  end
+
+  it 'promotes a local queued recommendation seed when Spotify starts playing that track' do
+    current_track = YouFM::Models::Track.new(
+      id: '1',
+      title: 'Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:1',
+      duration_ms: 1
+    )
+    recommended_track = YouFM::Models::Track.new(
+      id: '2',
+      title: 'Recommended',
+      artists: ['Another Artist'],
+      album: 'Album 2',
+      uri: 'spotify:track:2',
+      duration_ms: 1
+    )
+
+    allow(source).to receive(:play_track)
+    allow(source).to receive(:add_to_queue).with(recommended_track)
+    allow(recommendation_generator).to receive(:generate_with_seed).and_return(
+      build_recommendation(track: recommended_track, seed_track: current_track),
+      nil
+    )
+    allow(source).to receive(:current_playback).and_return(
+      YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: recommended_track, playing: true, progress_ms: 0)
+    )
+
+    view_model = build_view_model
+    view_model.state.search_results = [current_track]
+    view_model.state.selected_index = 0
+    view_model.play_selected
+    view_model.refresh_playback
+
+    expect(view_model.state.queue_tracks).to eq([])
+    expect(view_model.state.recommendation_seed).to eq('Track — Artist (Взят из плейлиста: Tracks)')
+  end
+
+  it 'does not show a selected queued recommendation seed as the now playing seed' do
+    current_track = YouFM::Models::Track.new(
+      id: '1',
+      title: 'Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:1',
+      duration_ms: 1
+    )
+    recommended_track = YouFM::Models::Track.new(
+      id: '2',
+      title: 'Recommended',
+      artists: ['Another Artist'],
+      album: 'Album 2',
+      uri: 'spotify:track:2',
+      duration_ms: 1
+    )
+
+    allow(source).to receive(:play_track)
+    allow(source).to receive(:add_to_queue).with(recommended_track)
+    allow(recommendation_generator).to receive(:generate_with_seed).and_return(build_recommendation(track: recommended_track, seed_track: current_track))
+    allow(source).to receive(:current_playback).and_return(
+      YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: current_track, playing: true, progress_ms: 0)
+    )
+
+    view_model = build_view_model
+    view_model.state.search_results = [current_track]
+    view_model.state.selected_index = 0
+    view_model.play_selected
+    view_model.select_queue_index(0)
+    view_model.refresh_playback
+
+    expect(view_model.state.selected_queue_recommendation_seed).to eq('Track — Artist (Взят из плейлиста: Tracks)')
+    expect(view_model.state.recommendation_seed).to eq('None')
   end
 
   it 'surfaces when auto-recommendation could not find a suitable track' do
@@ -551,7 +700,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
       YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: current_track, playing: true, progress_ms: 0),
       YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: next_track, playing: true, progress_ms: 0)
     )
-    allow(recommendation_generator).to receive(:generate_from_playlist).and_return(nil)
+    allow(recommendation_generator).to receive(:generate_with_seed).and_return(nil)
 
     view_model = build_view_model
     view_model.state.search_results = [current_track, next_track]

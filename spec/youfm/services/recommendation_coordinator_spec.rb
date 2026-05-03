@@ -5,6 +5,7 @@ require 'spec_helper'
 RSpec.describe YouFM::Services::RecommendationCoordinator do
   let(:generator) { instance_double(YouFM::Services::RecommendationGenerator, similar_artist_pool_limit: 200) }
   let(:source) { instance_double(YouFM::Services::MusicSources::SpotifySource) }
+  let(:seed_store) { instance_double(YouFM::Services::RecommendationSeedStore, save: nil) }
 
   def build_track(id, title = "Track #{id}")
     YouFM::Models::Track.new(
@@ -17,27 +18,32 @@ RSpec.describe YouFM::Services::RecommendationCoordinator do
     )
   end
 
+  def build_recommendation(track:, seed_track:)
+    YouFM::Services::RecommendationGenerator::Recommendation.new(track: track, seed_track: seed_track)
+  end
+
   def build_coordinator
-    described_class.new(recommendation_generator: generator, source: source)
+    described_class.new(recommendation_generator: generator, source: source, seed_store: seed_store)
   end
 
   def enqueue_context(overrides = {})
     updates = []
     appended = []
     {
-      seed_tracks: [build_track('seed')],
+      seed_tracks: [build_track('seed', 'Track seed')],
       excluded_track_ids: [],
       playlist_name: 'Daily',
       queue_tracks: [],
       trigger: :manual,
-      append_track: ->(track) { appended << track },
+      append_track: ->(track, seed_label) { appended << [track, seed_label] },
       update_status: ->(message) { updates << message }
     }.merge(overrides).merge(updates: updates, appended: appended)
   end
 
   it 'adds a generated recommendation to Spotify queue and local queue' do
     recommended_track = build_track('recommended', 'Recommended')
-    allow(generator).to receive(:generate_from_playlist).and_return(recommended_track)
+    seed_track = build_track('seed', 'Track seed')
+    allow(generator).to receive(:generate_with_seed).and_return(build_recommendation(track: recommended_track, seed_track: seed_track))
     allow(source).to receive(:add_to_queue).with(recommended_track)
 
     coordinator = build_coordinator
@@ -46,13 +52,19 @@ RSpec.describe YouFM::Services::RecommendationCoordinator do
 
     expect(result).to eq('Added recommendation to Spotify queue: Recommended - Artist')
     expect(source).to have_received(:add_to_queue).with(recommended_track)
-    expect(context[:appended]).to eq([recommended_track])
+    expect(seed_store).to have_received(:save).with(
+      'recommended',
+      'Track seed — Artist (Взят из плейлиста: Daily)',
+      label: 'Recommended - Artist'
+    )
+    expect(context[:appended]).to eq([[recommended_track, 'Track seed — Artist (Взят из плейлиста: Daily)']])
     expect(context[:updates]).to eq(['Added recommendation to Spotify queue: Recommended - Artist'])
   end
 
   it 'does not add a duplicate recommendation' do
     recommended_track = build_track('recommended', 'Recommended')
-    allow(generator).to receive(:generate_from_playlist).and_return(recommended_track)
+    seed_track = build_track('seed', 'Track seed')
+    allow(generator).to receive(:generate_with_seed).and_return(build_recommendation(track: recommended_track, seed_track: seed_track))
     allow(source).to receive(:add_to_queue)
 
     coordinator = build_coordinator
@@ -66,7 +78,7 @@ RSpec.describe YouFM::Services::RecommendationCoordinator do
 
   it 'skips concurrent async recommendations' do
     allow(Thread).to receive(:new).and_return(instance_double(Thread))
-    allow(generator).to receive(:generate_from_playlist)
+    allow(generator).to receive(:generate_with_seed)
 
     coordinator = build_coordinator
     context = enqueue_context
