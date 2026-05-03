@@ -43,6 +43,7 @@ module YouFM
         @playlist_tracks_has_more = false
         @playlist_tracks_loading = false
         @next_queue_refresh_at = nil
+        @recommendation_in_flight = false
         @state = State.new(
           source_name: source.name,
           configured: source.configured?,
@@ -113,6 +114,7 @@ module YouFM
         @last_playing_track_id = nil
         @recently_played_track_ids = []
         @last_recommendation_seed_track_id = nil
+        @recommendation_in_flight = false
         @next_queue_refresh_at = nil
         reset_playlist_pagination
         state.devices = []
@@ -165,6 +167,8 @@ module YouFM
         state.playing = playback.playing
         playback_change_message = handle_playback_track_change(playback.track, previous_track_id:)
         sync_connection_state!
+        return if playback_change_message == :recommendation_queued
+
         update_status(playback_change_message || (state.connected ? 'Playback state updated' : initial_status))
       rescue Services::SpotifyClient::AuthenticationError
         sync_connection_state!
@@ -250,7 +254,7 @@ module YouFM
         source.play_track(track)
         remember_playing_track(track.id)
         schedule_recommendation_for_track(track.id)
-        Thread.new { enqueue_recommendation(seed_tracks: recommendation_seed_tracks, trigger: :manual) }
+        enqueue_recommendation_async(seed_tracks: recommendation_seed_tracks, trigger: :manual)
         state.playing = true
         state.now_playing = "Playing: #{track.display_label}"
         update_status('Playback command sent to Spotify')
@@ -301,7 +305,7 @@ module YouFM
         remember_playing_track(track.id)
         remove_track_from_local_queue(track.id)
         schedule_recommendation_for_track(track.id)
-        Thread.new { enqueue_recommendation(seed_tracks: recommendation_seed_tracks, trigger: :manual) }
+        enqueue_recommendation_async(seed_tracks: recommendation_seed_tracks, trigger: :manual)
         state.playing = true
         state.now_playing = "Playing: #{track.display_label}"
         update_status('Playback command sent to Spotify')
@@ -475,7 +479,7 @@ module YouFM
         cached_page = source.cached_playlist_tracks_page(playlist, limit: PLAYLIST_PAGE_SIZE, offset: 0)
         if cached_page
           apply_playlist_tracks_page(playlist, cached_page)
-          state.tracks_loading_more = false
+          state.tracks_loading_more = cached_page[:has_more]
           on_loaded&.call
           return
         end
@@ -484,6 +488,7 @@ module YouFM
         Thread.new do
           page = source.playlist_tracks_page(playlist, limit: PLAYLIST_PAGE_SIZE, offset: 0)
           apply_playlist_tracks_page(playlist, page)
+          state.tracks_loading_more = page[:has_more]
           on_loaded&.call
         rescue Services::SpotifyClient::AuthenticationError
           update_status('Connect Spotify first')
@@ -624,7 +629,23 @@ module YouFM
         return if @last_recommendation_seed_track_id == current_track_id
 
         schedule_recommendation_for_track(current_track_id)
-        enqueue_recommendation(seed_tracks: recommendation_seed_tracks, trigger: :playback_change)
+        puts "[youfm] playback track changed: previous=#{previous_track_id || 'none'} current=#{current_track_id}; scheduling recommendation"
+        enqueue_recommendation_async(seed_tracks: recommendation_seed_tracks, trigger: :playback_change)
+        :recommendation_queued
+      end
+
+      def enqueue_recommendation_async(seed_tracks:, trigger:)
+        if @recommendation_in_flight
+          puts "[youfm] recommendation skipped: trigger=#{trigger} reason=already_in_flight"
+          return
+        end
+
+        @recommendation_in_flight = true
+        Thread.new do
+          enqueue_recommendation(seed_tracks:, trigger:)
+        ensure
+          @recommendation_in_flight = false
+        end
       end
 
       def track_changed?(current_track_id, previous_track_id)

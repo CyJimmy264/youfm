@@ -29,6 +29,42 @@ RSpec.describe YouFM::Services::SpotifyClient do
       expect(result.length).to eq(1)
       expect(result.first.display_label).to eq('Track - Artist')
     end
+
+    it 'retries search without limit when Spotify says the limit is invalid' do
+      client = described_class.new(access_token: 'token', base_url: 'https://api.spotify.test/v1')
+      invalid_response = instance_double(
+        Net::HTTPResponse,
+        code: '400',
+        body: JSON.dump('error' => { 'message' => 'Invalid limit' })
+      )
+      valid_response = instance_double(
+        Net::HTTPResponse,
+        code: '200',
+        body: JSON.dump(
+          'tracks' => {
+            'items' => [
+              {
+                'id' => '1',
+                'name' => 'Track',
+                'artists' => [{ 'name' => 'Artist' }],
+                'album' => { 'name' => 'Album' },
+                'uri' => 'spotify:track:1',
+                'duration_ms' => 123_000
+              }
+            ]
+          }
+        )
+      )
+      http = instance_double(Net::HTTP)
+
+      allow(http).to receive(:request).and_return(invalid_response, valid_response)
+      allow(Net::HTTP).to receive(:start).twice.and_yield(http)
+
+      result = client.search_tracks('track')
+
+      expect(result.length).to eq(1)
+      expect(result.first.display_label).to eq('Track - Artist')
+    end
   end
 
   describe '#current_playback' do

@@ -31,6 +31,7 @@ module YouFM
         apply_saved_similar_artist_pool_limit
         view_model.bootstrap
         render_full
+        force_active_playback_polling!
       end
 
       def show = window.show
@@ -338,7 +339,7 @@ module YouFM
         return unless scrollbar.maximum > 0
         return unless scrollbar.value >= scrollbar.maximum - 20
 
-        view_model.load_more_playlist_tracks { @render_queue.push(:render_full) }
+        view_model.load_more_playlist_tracks { @render_queue.push(:render_tracks) }
       end
 
       def handle_queue_selection(_index)
@@ -354,7 +355,7 @@ module YouFM
       def handle_playlist_selection(_index)
         index = playlists_list.currentRow
         @render_queue.push(:render_full)
-        view_model.select_playlist_index(index.to_i) { @render_queue.push(:render_full) }
+        view_model.select_playlist_index(index.to_i) { @render_queue.push(:render_tracks) }
       end
 
       def handle_play_selected
@@ -413,7 +414,7 @@ module YouFM
       end
 
       def handle_refresh
-        resume_playback_polling!
+        force_active_playback_polling!
         view_model.refresh_playback
         render_status
       end
@@ -440,23 +441,30 @@ module YouFM
 
         if view_model.state.tracks_loading_more
           @loader_frame_index = (@loader_frame_index + 1) % LOADER_FRAMES.length
-          @render_queue.push(:render_full) if @render_queue.empty?
+          @render_queue.push(:render_tracks) if @render_queue.empty?
         end
 
         while !@render_queue.empty?
           message = @render_queue.pop(true)
-          render_full if message == :render_full
+          if message == :render_full
+            render_full
+          elsif message == :render_tracks
+            adjust_playback_polling!
+            render_tracks
+          elsif message == :render_playback
+            adjust_playback_polling!
+            render_playback
+          end
         end
       end
 
       def on_playback_refresh
         view_model.refresh_playback
-        view_model.refresh_queue
         adjust_playback_polling!
-        @render_queue.push(:render_full)
+        @render_queue.push(:render_playback)
       rescue StandardError => e
         warn("[youfm] playback refresh failed: #{e.class}: #{e.message}")
-        @render_queue.push(:render_full)
+        @render_queue.push(:render_playback)
       end
 
       def close_if_requested
@@ -491,6 +499,12 @@ module YouFM
         @playback_refresher.start unless @playback_refresher.is_active
       end
 
+      def force_active_playback_polling!
+        @idle_playback_polls = 0
+        @playback_refresher.interval = ACTIVE_PLAYBACK_REFRESH_MS
+        @playback_refresher.start unless @playback_refresher.is_active
+      end
+
       def suspend_playback_polling!
         @idle_playback_polls = IDLE_POLLS_BEFORE_SUSPEND
         @playback_refresher.stop if @playback_refresher.is_active
@@ -512,6 +526,18 @@ module YouFM
         render_results(state)
         render_devices(state)
         render_playlists(state)
+        render_queue(state)
+        render_status
+      end
+
+      def render_tracks
+        state = view_model.state
+        render_results(state)
+        render_status
+      end
+
+      def render_playback
+        state = view_model.state
         render_queue(state)
         render_status
       end

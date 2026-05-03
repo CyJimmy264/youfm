@@ -26,7 +26,8 @@ module YouFM
       end
 
       def search_tracks(query, limit: 20)
-        body = get('/search', q: query, type: 'track', limit: limit)
+        search_limit = normalize_search_limit(limit)
+        body = search_tracks_body(query, limit: search_limit)
         items = body.fetch('tracks', {}).fetch('items', [])
         items.map { |item| build_track(item) }
       end
@@ -366,6 +367,14 @@ module YouFM
         RateLimitedError.new(message, retry_after_seconds: retry_after_seconds)
       end
 
+      def search_tracks_body(query, limit:)
+        get('/search', q: query, type: 'track', limit: limit)
+      rescue Error => e
+        raise unless e.message == 'Invalid limit' && !limit.nil?
+
+        get('/search', q: query, type: 'track')
+      end
+
       def enforce_rate_limit!
         return unless @rate_limited_until && Time.now < @rate_limited_until
 
@@ -381,6 +390,13 @@ module YouFM
         parsed.dig('error', 'message').to_s.strip.then { |message| message.empty? ? body : message }
       rescue JSON::ParserError
         body
+      end
+
+      def normalize_search_limit(limit)
+        parsed = Integer(limit, exception: false)
+        return 20 if parsed.nil? || parsed <= 0
+
+        [parsed, 50].min
       end
 
       def playlist_items_total(item)
