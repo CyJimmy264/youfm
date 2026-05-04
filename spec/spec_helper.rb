@@ -25,7 +25,7 @@ RSpec.configure do |config|
     YouFM::Application.instance_variable_set(:@qt_app, nil)
   end
 
-  config.around(:example) do |example|
+  config.around do |example|
     original_stdout = $stdout
     original_stderr = $stderr
     $stdout = StringIO.new
@@ -35,5 +35,4 @@ RSpec.configure do |config|
     $stdout = original_stdout
     $stderr = original_stderr
   end
-
 end

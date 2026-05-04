@@ -43,7 +43,8 @@ RSpec.describe YouFM::Services::RecommendationCoordinator do
   it 'adds a generated recommendation to Spotify queue and local queue' do
     recommended_track = build_track('recommended', 'Recommended')
     seed_track = build_track('seed', 'Track seed')
-    allow(generator).to receive(:generate_with_seed).and_return(build_recommendation(track: recommended_track, seed_track: seed_track))
+    allow(generator).to receive(:generate_with_seed).and_return(build_recommendation(track: recommended_track,
+                                                                                     seed_track: seed_track))
     allow(source).to receive(:add_to_queue).with(recommended_track)
 
     coordinator = build_coordinator
@@ -64,7 +65,8 @@ RSpec.describe YouFM::Services::RecommendationCoordinator do
   it 'does not add a duplicate recommendation' do
     recommended_track = build_track('recommended', 'Recommended')
     seed_track = build_track('seed', 'Track seed')
-    allow(generator).to receive(:generate_with_seed).and_return(build_recommendation(track: recommended_track, seed_track: seed_track))
+    allow(generator).to receive(:generate_with_seed).and_return(build_recommendation(track: recommended_track,
+                                                                                     seed_track: seed_track))
     allow(source).to receive(:add_to_queue)
 
     coordinator = build_coordinator

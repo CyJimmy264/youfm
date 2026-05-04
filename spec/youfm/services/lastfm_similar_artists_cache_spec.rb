@@ -28,7 +28,7 @@ RSpec.describe YouFM::Services::LastfmSimilarArtistsCache do
       cache.save('Air', [{ 'name' => 'Phoenix', 'match' => '0.8' }])
       expect(cache.fetch('Air', ttl: 7 * 24 * 60 * 60)).to eq([{ 'name' => 'Phoenix', 'match' => '0.8' }])
 
-      now += 7 * 24 * 60 * 60 + 1
+      now += (7 * 24 * 60 * 60) + 1
       expect(cache.fetch('Air', ttl: 7 * 24 * 60 * 60)).to be_nil
     end
   end

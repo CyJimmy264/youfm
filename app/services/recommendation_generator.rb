@@ -47,12 +47,14 @@ module YouFM
               candidate = spotify_tracks.find do |track|
                 next false if blocked_track_ids.include?(track.id.to_s)
 
-                spotify_track_matches?(track, generated_artist_name: similar_artist.name, generated_title: top_track.name)
+                spotify_track_matches?(track, generated_artist_name: similar_artist.name,
+                                              generated_title: top_track.name)
               end
-              if candidate
-                puts "[youfm] recommendation generated: playlist=#{playlist_name || 'unknown'} seed=#{seed_track.display_label.inspect} result=#{candidate.display_label.inspect}"
-                return Recommendation.new(track: candidate, seed_track: seed_track)
-              end
+              next unless candidate
+
+              puts "[youfm] recommendation generated: playlist=#{playlist_name || 'unknown'} " \
+                   "seed=#{seed_track.display_label.inspect} result=#{candidate.display_label.inspect}"
+              return Recommendation.new(track: candidate, seed_track: seed_track)
             end
           end
         end
@@ -72,7 +74,8 @@ module YouFM
         window_size = [SIMILAR_ARTIST_WINDOW_SIZE, similar_artists.length].min
         offset = rand(similar_artists.length).floor
         window = similar_artists.rotate(offset).first(window_size)
-        puts "[youfm] recommendation similar artists: total=#{similar_artists.length} pool_limit=#{similar_artist_pool_limit} offset=#{offset} window=#{window.map(&:name).join(' | ')}"
+        puts "[youfm] recommendation similar artists: total=#{similar_artists.length} " \
+             "pool_limit=#{similar_artist_pool_limit} offset=#{offset} window=#{window.map(&:name).join(' | ')}"
         window
       end
 

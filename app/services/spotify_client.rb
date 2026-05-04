@@ -9,6 +9,7 @@ module YouFM
       class PlaybackUnavailableError < Error; end
       class DeviceUnavailableError < Error; end
       class TimeoutError < Error; end
+
       class RateLimitedError < Error
         attr_reader :retry_after_seconds
 
@@ -18,7 +19,8 @@ module YouFM
         end
       end
 
-      def initialize(access_token:, base_url: 'https://api.spotify.com/v1', token_store: nil, authenticator: nil, playlist_cache: nil)
+      def initialize(access_token:, base_url: 'https://api.spotify.com/v1', token_store: nil, authenticator: nil,
+                     playlist_cache: nil)
         @access_token = access_token.to_s.strip
         @base_url = base_url
         @token_store = token_store
@@ -83,11 +85,13 @@ module YouFM
       def playlist_tracks_page(playlist_id, limit: 100, offset: 0, snapshot_id: nil)
         cached_page = cached_playlist_tracks_page(playlist_id, limit:, offset:, snapshot_id:)
         if cached_page
-          puts "[youfm] spotify playlist page cache hit: playlist_id=#{playlist_id} snapshot_id=#{snapshot_id || 'none'} offset=#{offset} limit=#{limit}"
+          puts "[youfm] spotify playlist page cache hit: playlist_id=#{playlist_id} " \
+               "snapshot_id=#{snapshot_id || 'none'} offset=#{offset} limit=#{limit}"
           return cached_page
         end
 
-        puts "[youfm] spotify playlist page cache miss: playlist_id=#{playlist_id} snapshot_id=#{snapshot_id || 'none'} offset=#{offset} limit=#{limit}"
+        puts "[youfm] spotify playlist page cache miss: playlist_id=#{playlist_id} " \
+             "snapshot_id=#{snapshot_id || 'none'} offset=#{offset} limit=#{limit}"
 
         started_at = Time.now
         body = get(
@@ -96,7 +100,8 @@ module YouFM
         )
         elapsed = Time.now - started_at
         puts format(
-          '[youfm] spotify playlist page fetched: playlist_id=%<playlist_id>s offset=%<offset>s limit=%<limit>s elapsed=%<elapsed>.2fs',
+          '[youfm] spotify playlist page fetched: playlist_id=%<playlist_id>s ' \
+          'offset=%<offset>s limit=%<limit>s elapsed=%<elapsed>.2fs',
           playlist_id: playlist_id,
           offset: offset,
           limit: limit,
@@ -217,7 +222,7 @@ module YouFM
         Models::Track.new(
           id: item.fetch('id', ''),
           title: item.fetch('name', 'Unknown Track'),
-          artists: Array(item['artists']).map { |artist| artist['name'] }.compact,
+          artists: Array(item['artists']).filter_map { |artist| artist['name'] },
           album: item.dig('album', 'name').to_s,
           uri: item.fetch('uri', ''),
           duration_ms: item.fetch('duration_ms', 0)
@@ -287,7 +292,7 @@ module YouFM
       end
 
       def build_uri(path, params = {})
-        uri = URI.join(base_url.end_with?('/') ? base_url : "#{base_url}/", path.sub(%r{\A/}, ''))
+        uri = URI.join(base_url.end_with?('/') ? base_url : "#{base_url}/", path.delete_prefix('/'))
         uri.query = URI.encode_www_form(params) unless params.empty?
         uri
       end
@@ -390,7 +395,7 @@ module YouFM
 
       def rate_limited_error_for(response, body)
         retry_after_seconds = Integer(response['Retry-After'], exception: false)
-        @rate_limited_until = retry_after_seconds && retry_after_seconds.positive? ? Time.now + retry_after_seconds : nil
+        @rate_limited_until = retry_after_seconds&.positive? ? Time.now + retry_after_seconds : nil
         message = extract_error_message(body)
         message = 'Too many requests' if message.to_s.strip.empty?
         RateLimitedError.new(message, retry_after_seconds: retry_after_seconds)

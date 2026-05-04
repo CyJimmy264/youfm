@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 require 'digest'
 require 'rbconfig'
 
@@ -34,7 +35,8 @@ module YouFM
         </html>
       HTML
 
-      def initialize(client_id:, redirect_uri:, scopes:, accounts_base_url:, token_store:, browser_launcher:, timeout_seconds: 120)
+      def initialize(client_id:, redirect_uri:, scopes:, accounts_base_url:, token_store:, browser_launcher:,
+                     timeout_seconds: 120)
         @client_id = client_id.to_s.strip
         @redirect_uri = redirect_uri.to_s.strip
         @scopes = Array(scopes)
@@ -75,7 +77,8 @@ module YouFM
 
       private
 
-      attr_reader :client_id, :redirect_uri, :scopes, :accounts_base_url, :token_store, :browser_launcher, :timeout_seconds
+      attr_reader :client_id, :redirect_uri, :scopes, :accounts_base_url, :token_store, :browser_launcher,
+                  :timeout_seconds
 
       def capture_callback!(state:, verifier:)
         redirect = URI.parse(redirect_uri)
@@ -103,7 +106,7 @@ module YouFM
         request_line = socket.gets.to_s
         return nil if request_line.empty?
 
-        _method, target, = request_line.split(' ')
+        _method, target, = request_line.split
         consume_headers(socket)
         uri = URI.parse(target)
 

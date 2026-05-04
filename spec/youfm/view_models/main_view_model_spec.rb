@@ -58,13 +58,13 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
 
   it 'bootstraps from a saved session without opening auth flow' do
     device = YouFM::Models::Device.new(id: 'd1', name: 'MacBook', type: 'Computer', active: true, restricted: false)
-    allow(source).to receive(:resumable_session?).and_return(true)
-    allow(source).to receive(:available_devices).and_return([device])
-    allow(source).to receive(:playlists).and_return([])
-    allow(source).to receive(:queue).and_return([])
-    allow(source).to receive(:current_playback).and_return(
-      YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: nil, playing: false, progress_ms: 0)
-    )
+    allow(source)
+      .to receive_messages(
+        resumable_session?: true, available_devices: [device], playlists: [], queue: [],
+        current_playback: YouFM::Models::PlaybackState.new(
+          device_name: 'MacBook', track: nil, playing: false, progress_ms: 0
+        )
+      )
 
     view_model = build_view_model
     view_model.bootstrap
@@ -128,23 +128,25 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
   it 'logs status changes to stdout' do
     view_model = build_view_model
 
-    expect { view_model.set_status('Visible status') }.to output("[youfm] status: Visible status\n").to_stdout
-    expect { view_model.set_status('Visible status') }.not_to output.to_stdout
+    expect { view_model.status = 'Visible status' }.to output("[youfm] status: Visible status\n").to_stdout
+    expect { view_model.status = 'Visible status' }.not_to output.to_stdout
     expect(view_model.state.status_message).to eq('Visible status')
   end
 
   it 'connects Spotify and refreshes device and playlist state' do
     device = YouFM::Models::Device.new(id: 'd1', name: 'MacBook', type: 'Computer', active: true, restricted: false)
-    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 10, snapshot_id: 'snap-1')
+    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me',
+                                           tracks_total: 10, snapshot_id: 'snap-1')
 
     allow(source).to receive(:connect!)
-    allow(source).to receive(:available_devices).and_return([device])
-    allow(source).to receive(:playlists).and_return([playlist])
-    allow(source).to receive(:queue).and_return([])
-    allow(source).to receive(:current_playback).and_return(
-      YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: nil, playing: false, progress_ms: 0)
-    )
-    allow(source).to receive(:connected?).and_return(true)
+    allow(source)
+      .to receive_messages(
+        available_devices: [device], playlists: [playlist], queue: [],
+        current_playback: YouFM::Models::PlaybackState.new(
+          device_name: 'MacBook', track: nil, playing: false, progress_ms: 0
+        ),
+        connected?: true
+      )
 
     view_model = build_view_model
     view_model.connect_spotify
@@ -155,8 +157,10 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
   end
 
   it 'shows the transferred active device even when Spotify returns no active playback item' do
-    old_device = YouFM::Models::Device.new(id: 'd1', name: 'MacBook', type: 'Computer', active: false, restricted: false)
-    target_device = YouFM::Models::Device.new(id: 'd2', name: 'iPhone', type: 'Smartphone', active: true, restricted: false)
+    old_device = YouFM::Models::Device.new(id: 'd1', name: 'MacBook', type: 'Computer', active: false,
+                                           restricted: false)
+    target_device = YouFM::Models::Device.new(id: 'd2', name: 'iPhone', type: 'Smartphone', active: true,
+                                              restricted: false)
 
     allow(source).to receive(:transfer_playback).with(target_device)
 
@@ -172,7 +176,8 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
   end
 
   it 'loads selected playlist tracks into the tracks list' do
-    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 10, snapshot_id: 'snap-1')
+    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me',
+                                           tracks_total: 10, snapshot_id: 'snap-1')
     track = YouFM::Models::Track.new(
       id: '1',
       title: 'Track',
@@ -196,7 +201,8 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
   end
 
   it 'backs off queue refresh until Retry-After elapses after Spotify rate limiting' do
-    rate_limited_error = YouFM::Services::SpotifyClient::RateLimitedError.new('Too many requests', retry_after_seconds: 17)
+    rate_limited_error = YouFM::Services::SpotifyClient::RateLimitedError.new('Too many requests',
+                                                                              retry_after_seconds: 17)
     allow(source).to receive(:queue).and_raise(rate_limited_error)
 
     view_model = build_view_model
@@ -208,7 +214,8 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
   end
 
   it 'switches tracks panel into playlist loading state immediately' do
-    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 10, snapshot_id: 'snap-1')
+    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me',
+                                           tracks_total: 10, snapshot_id: 'snap-1')
     track = YouFM::Models::Track.new(
       id: '1',
       title: 'Track',
@@ -220,12 +227,8 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     call_count = 0
     allow(Thread).to receive(:new).and_wrap_original do |_original, *args, &block|
       call_count += 1
-      if call_count == 1
-        instance_double(Thread)
-      else
-        block.call(*args)
-        instance_double(Thread)
-      end
+      block.call(*args) unless call_count == 1
+      instance_double(Thread)
     end
     allow(source).to receive(:cached_playlist_tracks).with(playlist, limit: 100).and_return(nil)
     allow(source).to receive(:cached_playlist_tracks_page).with(playlist, limit: 100, offset: 0).and_return(nil)
@@ -244,7 +247,8 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
   end
 
   it 'calls playlist loaded callback after clearing the loading flag for async first page' do
-    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 10, snapshot_id: 'snap-1')
+    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me',
+                                           tracks_total: 10, snapshot_id: 'snap-1')
     track = YouFM::Models::Track.new(
       id: '1',
       title: 'Track',
@@ -269,7 +273,8 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
   end
 
   it 'logs Spotify playlist request failures to stdout' do
-    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 10, snapshot_id: 'snap-1')
+    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me',
+                                           tracks_total: 10, snapshot_id: 'snap-1')
 
     allow(source).to receive(:cached_playlist_tracks).with(playlist, limit: 100).and_return(nil)
     allow(source).to receive(:cached_playlist_tracks_page).with(playlist, limit: 100, offset: 0).and_return(nil)
@@ -287,7 +292,8 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
   end
 
   it 'updates playlist loading status with elapsed seconds while async loading is active' do
-    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 10, snapshot_id: 'snap-1')
+    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me',
+                                           tracks_total: 10, snapshot_id: 'snap-1')
     callback = proc {}
 
     allow(Thread).to receive(:new).and_return(instance_double(Thread))
@@ -309,7 +315,8 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
   end
 
   it 'uses cached first playlist page immediately without waiting for a thread' do
-    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 10, snapshot_id: 'snap-1')
+    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me',
+                                           tracks_total: 10, snapshot_id: 'snap-1')
     track = YouFM::Models::Track.new(
       id: '1',
       title: 'Track',
@@ -334,7 +341,8 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
   end
 
   it 'does not keep the playlist loader visible after loading a first page with more pages' do
-    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 200, snapshot_id: 'snap-1')
+    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me',
+                                           tracks_total: 200, snapshot_id: 'snap-1')
     track = YouFM::Models::Track.new(
       id: '1',
       title: 'Track',
@@ -359,7 +367,8 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
   end
 
   it 'uses fully cached playlist contents immediately without lazy loading' do
-    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 2, snapshot_id: 'snap-1')
+    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me',
+                                           tracks_total: 2, snapshot_id: 'snap-1')
     first_track = YouFM::Models::Track.new(
       id: '1',
       title: 'Track 1',
@@ -389,7 +398,8 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
   end
 
   it 'lazy loads more playlist tracks when requested' do
-    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 200, snapshot_id: 'snap-1')
+    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me',
+                                           tracks_total: 200, snapshot_id: 'snap-1')
     first_track = YouFM::Models::Track.new(
       id: '1',
       title: 'Track 1',
@@ -425,7 +435,8 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
   end
 
   it 'uses cached next playlist page immediately without waiting for a thread' do
-    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 200, snapshot_id: 'snap-1')
+    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me',
+                                           tracks_total: 200, snapshot_id: 'snap-1')
     first_track = YouFM::Models::Track.new(
       id: '1',
       title: 'Track 1',
@@ -467,7 +478,8 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
 
     view_model = build_view_model
     view_model.state.search_results = [
-      YouFM::Models::Track.new(id: '1', title: 'Track', artists: ['Artist'], album: 'Album', uri: 'spotify:track:1', duration_ms: 1)
+      YouFM::Models::Track.new(id: '1', title: 'Track', artists: ['Artist'], album: 'Album', uri: 'spotify:track:1',
+                               duration_ms: 1)
     ]
     view_model.state.selected_index = 0
     view_model.state.playing = true
@@ -481,11 +493,13 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
   end
 
   it 'shows a friendly playback error for unavailable devices' do
-    allow(source).to receive(:play_track).and_raise(YouFM::Services::SpotifyClient::PlaybackUnavailableError, 'premium required')
+    allow(source).to receive(:play_track).and_raise(YouFM::Services::SpotifyClient::PlaybackUnavailableError,
+                                                    'premium required')
 
     view_model = build_view_model
     view_model.state.search_results = [
-      YouFM::Models::Track.new(id: '1', title: 'Track', artists: ['Artist'], album: 'Album', uri: 'spotify:track:1', duration_ms: 1)
+      YouFM::Models::Track.new(id: '1', title: 'Track', artists: ['Artist'], album: 'Album', uri: 'spotify:track:1',
+                               duration_ms: 1)
     ]
     view_model.state.selected_index = 0
 
@@ -513,7 +527,9 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     )
     allow(source).to receive(:play_track)
     allow(source).to receive(:add_to_queue).with(recommended_track)
-    allow(recommendation_generator).to receive(:generate_with_seed).and_return(build_recommendation(track: recommended_track, seed_track: current_track))
+    allow(recommendation_generator)
+      .to receive(:generate_with_seed)
+      .and_return(build_recommendation(track: recommended_track, seed_track: current_track))
 
     view_model = build_view_model
     view_model.state.search_results = [current_track]
@@ -550,7 +566,9 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     )
 
     allow(source).to receive(:add_to_queue).with(recommended_track)
-    allow(recommendation_generator).to receive(:generate_with_seed).and_return(build_recommendation(track: recommended_track, seed_track: current_track))
+    allow(recommendation_generator)
+      .to receive(:generate_with_seed)
+      .and_return(build_recommendation(track: recommended_track, seed_track: current_track))
 
     view_model = build_view_model
     view_model.state.search_results = [current_track]
@@ -580,10 +598,10 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
       duration_ms: 1
     )
 
-    allow(source).to receive(:current_playback).and_return(
-      YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: old_track, playing: true, progress_ms: 0)
+    allow(source).to receive_messages(
+      current_playback: YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: old_track, playing: true,
+                                                         progress_ms: 0), queue: [next_track]
     )
-    allow(source).to receive(:queue).and_return([next_track])
     allow(recommendation_generator).to receive(:generate_with_seed).and_return(nil)
 
     view_model = build_view_model
@@ -625,7 +643,8 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
       YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: current_track, playing: true, progress_ms: 0),
       YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: next_track, playing: true, progress_ms: 0)
     )
-    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 2, snapshot_id: 'snap-1')
+    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me',
+                                           tracks_total: 2, snapshot_id: 'snap-1')
     allow(source).to receive(:add_to_queue).with(recommended_track)
     allow(recommendation_generator).to receive(:generate_with_seed).and_return(
       nil,
@@ -666,7 +685,9 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
 
     allow(source).to receive(:play_track)
     allow(source).to receive(:add_to_queue).with(recommended_track)
-    allow(recommendation_generator).to receive(:generate_with_seed).and_return(build_recommendation(track: recommended_track, seed_track: current_track))
+    allow(recommendation_generator)
+      .to receive(:generate_with_seed)
+      .and_return(build_recommendation(track: recommended_track, seed_track: current_track))
 
     view_model = build_view_model
     view_model.state.search_results = [current_track]
@@ -760,7 +781,10 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
 
     allow(source).to receive(:play_track)
     allow(source).to receive(:add_to_queue).with(recommended_track)
-    allow(recommendation_generator).to receive(:generate_with_seed).and_return(build_recommendation(track: recommended_track, seed_track: current_track))
+    allow(recommendation_generator)
+      .to receive(:generate_with_seed)
+      .and_return(build_recommendation(track: recommended_track, seed_track: current_track))
+
     allow(source).to receive(:current_playback).and_return(
       YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: current_track, playing: true, progress_ms: 0)
     )
@@ -806,6 +830,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     view_model.refresh_playback
     view_model.refresh_playback
 
-    expect(view_model.state.status_message).to eq('Auto-recommendation skipped: Last.fm/Spotify did not return a suitable track')
+    expect(view_model.state.status_message)
+      .to eq('Auto-recommendation skipped: Last.fm/Spotify did not return a suitable track')
   end
 end

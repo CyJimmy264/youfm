@@ -7,73 +7,11 @@
 # versions of RuboCop, may require this file to be generated again.
 
 # Offense count: 1
-# This cop supports safe autocorrection (--autocorrect).
-Layout/EmptyLineAfterMagicComment:
-  Exclude:
-    - 'app/services/spotify_authenticator.rb'
-
-# Offense count: 1
-# This cop supports safe autocorrection (--autocorrect).
-# Configuration parameters: EmptyLineBetweenMethodDefs, EmptyLineBetweenClassDefs, EmptyLineBetweenModuleDefs, DefLikeMacros, AllowAdjacentOneLineDefs, NumberOfEmptyLines.
-Layout/EmptyLineBetweenDefs:
-  Exclude:
-    - 'app/services/spotify_client.rb'
-
-# Offense count: 1
-# This cop supports safe autocorrection (--autocorrect).
-# Configuration parameters: EnforcedStyle.
-# SupportedStyles: empty_lines, no_empty_lines
-Layout/EmptyLinesAroundBlockBody:
-  Exclude:
-    - 'spec/spec_helper.rb'
-
-# Offense count: 1
 # Configuration parameters: EnforcedStyle.
 # SupportedStyles: native, lf, crlf
 Layout/EndOfLine:
   Exclude:
     - 'app/services/lastfm_authenticator.rb'
-
-# Offense count: 2
-# This cop supports safe autocorrection (--autocorrect).
-# Configuration parameters: EnforcedStyle.
-# SupportedStyles: normal, indented_internal_methods
-Layout/IndentationConsistency:
-  Exclude:
-    - 'app/services/music_sources/spotify_source.rb'
-
-# Offense count: 3
-# This cop supports safe autocorrection (--autocorrect).
-# Configuration parameters: Width, EnforcedStyleAlignWith, AllowedPatterns.
-# SupportedStylesAlignWith: start_of_line, relative_to_receiver
-Layout/IndentationWidth:
-  Exclude:
-    - 'app/services/music_sources/spotify_source.rb'
-
-# Offense count: 69
-# This cop supports safe autocorrection (--autocorrect).
-# Configuration parameters: AllowHeredoc, AllowURI, AllowQualifiedName, URISchemes, AllowRBSInlineAnnotation, AllowCopDirectives, AllowedPatterns, SplitStrings.
-# URISchemes: http, https
-Layout/LineLength:
-  Exclude:
-    - 'app/services/lastfm_client.rb'
-    - 'app/services/recommendation_coordinator.rb'
-    - 'app/services/recommendation_generator.rb'
-    - 'app/services/spotify_authenticator.rb'
-    - 'app/services/spotify_client.rb'
-    - 'app/view_models/main_view_model.rb'
-    - 'app/views/main_window.rb'
-    - 'spec/youfm/services/recommendation_coordinator_spec.rb'
-    - 'spec/youfm/services/recommendation_generator_spec.rb'
-    - 'spec/youfm/services/spotify_authenticator_spec.rb'
-    - 'spec/youfm/view_models/main_view_model_spec.rb'
-
-# Offense count: 2
-# This cop supports unsafe autocorrection (--autocorrect-all).
-Lint/NonAtomicFileOperation:
-  Exclude:
-    - 'app/services/lastfm_token_store.rb'
-    - 'app/services/spotify_token_store.rb'
 
 # Offense count: 3
 # Configuration parameters: IgnoreLiteralBranches, IgnoreConstantBranches, IgnoreDuplicateElseBranch.
@@ -81,25 +19,6 @@ Lint/DuplicateBranch:
   Exclude:
     - 'app/services/recommendation_coordinator.rb'
     - 'app/view_models/main_view_model.rb'
-
-# Offense count: 1
-# This cop supports safe autocorrection (--autocorrect).
-Lint/RedundantRequireStatement:
-  Exclude:
-    - 'app/views/main_window.rb'
-
-# Offense count: 1
-# This cop supports unsafe autocorrection (--autocorrect-all).
-Lint/RedundantDirGlobSort:
-  Exclude:
-    - 'config/application.rb'
-
-# Offense count: 1
-# This cop supports safe autocorrection (--autocorrect).
-Lint/AmbiguousOperatorPrecedence:
-  Exclude:
-    - 'spec/youfm/services/lastfm_similar_artists_cache_spec.rb'
-
 
 # Offense count: 39
 # Configuration parameters: AllowedMethods, AllowedPatterns, CountRepeatedAttributes.
@@ -116,6 +35,8 @@ Metrics/BlockLength:
 # Configuration parameters: CountComments, CountAsOne.
 Metrics/ClassLength:
   Max: 696
+  Exclude:
+    - 'app/view_models/main_view_model.rb'
 
 # Offense count: 9
 # Configuration parameters: AllowedMethods, AllowedPatterns.
@@ -142,41 +63,6 @@ Naming/AccessorMethodName:
   Exclude:
     - 'app/view_models/main_view_model.rb'
 
-# Offense count: 2
-# This cop supports safe autocorrection (--autocorrect).
-# Configuration parameters: EnforcedStyle, BlockForwardingName.
-# SupportedStyles: anonymous, explicit
-Naming/BlockForwarding:
-  Exclude:
-    - 'app/view_models/main_view_model.rb'
-
-# Offense count: 1
-# This cop supports unsafe autocorrection (--autocorrect-all).
-# Configuration parameters: SafeMultiline.
-Performance/DeletePrefix:
-  Exclude:
-    - 'app/services/spotify_client.rb'
-
-# Offense count: 1
-# This cop supports unsafe autocorrection (--autocorrect-all).
-Performance/MapCompact:
-  Exclude:
-    - 'app/services/spotify_client.rb'
-
-# Offense count: 3
-# This cop supports unsafe autocorrection (--autocorrect-all).
-# Configuration parameters: MaxKeyValuePairs.
-Performance/RedundantMerge:
-  Exclude:
-    - 'app/services/lastfm_client.rb'
-
-# Offense count: 7
-# This cop supports safe autocorrection (--autocorrect).
-Qt/PreferRubyStyleSetter:
-  Exclude:
-    - 'app/services/web_ui_server.rb'
-    - 'app/views/main_window.rb'
-
 # Offense count: 4
 RSpec/AnyInstance:
   Exclude:
@@ -186,14 +72,6 @@ RSpec/AnyInstance:
 # Configuration parameters: CountAsOne.
 RSpec/ExampleLength:
   Max: 86
-
-# Offense count: 1
-# This cop supports safe autocorrection (--autocorrect).
-# Configuration parameters: EnforcedStyle.
-# SupportedStyles: implicit, each, example
-RSpec/HookArgument:
-  Exclude:
-    - 'spec/spec_helper.rb'
 
 # Offense count: 1
 # Configuration parameters: EnforcedStyle.
@@ -206,83 +84,7 @@ RSpec/MessageSpies:
 RSpec/MultipleExpectations:
   Max: 6
 
-# Offense count: 12
-# This cop supports unsafe autocorrection (--autocorrect-all).
-RSpec/ReceiveMessages:
-  Exclude:
-    - 'spec/youfm/view_models/main_view_model_spec.rb'
-
-# Offense count: 1
-# This cop supports unsafe autocorrection (--autocorrect-all).
-# Configuration parameters: MinBranchesCount.
-Style/CaseLikeIf:
-  Exclude:
-    - 'app/views/main_window.rb'
-
 # Offense count: 28
 # Configuration parameters: AllowedConstants.
 Style/Documentation:
   Enabled: false
-
-# Offense count: 1
-# This cop supports safe autocorrection (--autocorrect).
-# Configuration parameters: MinBodyLength, AllowConsecutiveConditionals.
-Style/GuardClause:
-  Exclude:
-    - 'app/views/main_window.rb'
-
-# Offense count: 2
-# This cop supports unsafe autocorrection (--autocorrect-all).
-Style/IdenticalConditionalBranches:
-  Exclude:
-    - 'spec/youfm/view_models/main_view_model_spec.rb'
-
-# Offense count: 4
-# This cop supports safe autocorrection (--autocorrect).
-Style/IfUnlessModifier:
-  Exclude:
-    - 'app/services/lastfm_client.rb'
-    - 'app/services/recommendation_coordinator.rb'
-    - 'app/views/main_window.rb'
-
-# Offense count: 1
-# This cop supports safe autocorrection (--autocorrect).
-Style/NegatedWhile:
-  Exclude:
-    - 'app/views/main_window.rb'
-
-# Offense count: 1
-# This cop supports unsafe autocorrection (--autocorrect-all).
-# Configuration parameters: EnforcedStyle, AllowedMethods, AllowedPatterns.
-# SupportedStyles: predicate, comparison
-Style/NumericPredicate:
-  Exclude:
-    - 'spec/**/*'
-    - 'app/views/main_window.rb'
-
-# Offense count: 1
-# This cop supports unsafe autocorrection (--autocorrect-all).
-# Configuration parameters: Methods.
-Style/RedundantArgument:
-  Exclude:
-    - 'app/services/spotify_authenticator.rb'
-
-# Offense count: 2
-# This cop supports safe autocorrection (--autocorrect).
-Style/RescueModifier:
-  Exclude:
-    - 'app/view_models/main_view_model.rb'
-
-# Offense count: 3
-# This cop supports unsafe autocorrection (--autocorrect-all).
-# Configuration parameters: ConvertCodeThatCanStartToReturnNil, AllowedMethods, MaxChainLength.
-# AllowedMethods: present?, blank?, presence, try, try!
-Style/SafeNavigation:
-  Exclude:
-    - 'app/services/spotify_client.rb'
-    - 'app/view_models/main_view_model.rb'
-
-# Offense count: 69
-# This cop supports safe autocorrection (--autocorrect).
-# Configuration parameters: AllowHeredoc, AllowURI, AllowQualifiedName, URISchemes, AllowRBSInlineAnnotation, AllowCopDirectives, AllowedPatterns, SplitStrings.
-# URISchemes: http, https

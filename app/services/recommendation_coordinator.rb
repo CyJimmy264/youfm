@@ -22,7 +22,8 @@ module YouFM
         @in_flight = false
       end
 
-      def enqueue(seed_tracks:, excluded_track_ids:, playlist_name:, queue_tracks:, trigger:, append_track:, update_status:)
+      def enqueue(seed_tracks:, excluded_track_ids:, playlist_name:, queue_tracks:, trigger:, append_track:,
+                  update_status:)
         return recommendation_status(trigger, :missing_seed_tracks, update_status:) if seed_tracks.empty?
 
         recommendation = recommendation_generator.generate_with_seed(
@@ -34,7 +35,9 @@ module YouFM
         return recommendation_status(trigger, :not_found, update_status:) unless recommended_track
 
         seed_label = seed_label_for(recommendation.seed_track, playlist_name)
-        return recommendation_status(trigger, :duplicate, update_status:) if queue_tracks.any? { |track| track.id == recommended_track.id }
+        return recommendation_status(trigger, :duplicate, update_status:) if queue_tracks.any? do |track|
+          track.id == recommended_track.id
+        end
 
         source.add_to_queue(recommended_track)
         seed_store.save(recommended_track.id, seed_label, label: recommended_track.display_label)

@@ -22,7 +22,9 @@ RSpec.describe YouFM::Services::SpotifyAuthenticator do
     http = instance_double(Net::HTTP, request: response)
 
     allow(Net::HTTP).to receive(:start).and_yield(http)
-    allow(token_store).to receive(:load).and_return({ 'refresh_token' => 'refresh-token' }, { 'access_token' => 'new-token', 'refresh_token' => 'refresh-token' })
+    allow(token_store).to receive(:load).and_return({ 'refresh_token' => 'refresh-token' },
+                                                    { 'access_token' => 'new-token',
+                                                      'refresh_token' => 'refresh-token' })
     allow(token_store).to receive(:save)
 
     payload = authenticator.refresh!('refresh-token')

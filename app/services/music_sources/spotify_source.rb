@@ -50,13 +50,13 @@ module YouFM
           client.current_user_playlists
         end
 
-      def playlist_tracks(playlist)
+        def playlist_tracks(playlist)
           client.playlist_tracks(playlist.id, snapshot_id: playlist.snapshot_id)
-      end
+        end
 
-      def playlist_tracks_page(playlist, limit:, offset:)
-        client.playlist_tracks_page(playlist.id, limit:, offset:, snapshot_id: playlist.snapshot_id)
-      end
+        def playlist_tracks_page(playlist, limit:, offset:)
+          client.playlist_tracks_page(playlist.id, limit:, offset:, snapshot_id: playlist.snapshot_id)
+        end
 
         def cached_playlist_tracks_page(playlist, limit:, offset:)
           client.cached_playlist_tracks_page(playlist.id, limit:, offset:, snapshot_id: playlist.snapshot_id)

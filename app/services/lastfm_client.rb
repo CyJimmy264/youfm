@@ -14,9 +14,11 @@ module YouFM
       SIMILAR_ARTISTS_CACHE_TTL = 7 * 24 * 60 * 60
       SIMILAR_ARTISTS_API_LIMIT = 100
       LASTFM_WEB_BASE_URL = 'https://www.last.fm'
-      WEB_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36'
+      WEB_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 ' \
+                       '(KHTML, like Gecko) Chrome/123.0 Safari/537.36'
 
-      def initialize(api_key:, secret:, session_key: nil, base_url: 'http://ws.audioscrobbler.com/2.0/', similar_artists_cache: nil)
+      def initialize(api_key:, secret:, session_key: nil, base_url: 'http://ws.audioscrobbler.com/2.0/',
+                     similar_artists_cache: nil)
         @api_key = api_key
         @secret = secret
         @session_key = session_key
@@ -39,11 +41,17 @@ module YouFM
         desired_limit = normalize_limit(limit)
         cached_artists_payload = similar_artists_cache&.fetch(artist_name, ttl: SIMILAR_ARTISTS_CACHE_TTL)
         if cached_artists_payload
-          return build_similar_artists(truncate_similar_artists_payload(cached_artists_payload, desired_limit)) if desired_limit.nil? || cached_artists_payload.length >= desired_limit
+          if desired_limit.nil? || cached_artists_payload.length >= desired_limit
+            return build_similar_artists(truncate_similar_artists_payload(cached_artists_payload,
+                                                                          desired_limit))
+          end
 
           web_artists_payload = fetch_similar_artists_from_web(artist_name, limit: desired_limit)
           artists_payload = merge_similar_artists_payloads(cached_artists_payload, web_artists_payload)
-          similar_artists_cache&.save(artist_name, artists_payload) if artists_payload.length > cached_artists_payload.length
+          if artists_payload.length > cached_artists_payload.length
+            similar_artists_cache&.save(artist_name,
+                                        artists_payload)
+          end
           return build_similar_artists(truncate_similar_artists_payload(artists_payload, desired_limit))
         end
 
@@ -88,9 +96,10 @@ module YouFM
       end
 
       def get(params = {}, signed: false)
-        params.merge!(api_key: api_key, format: 'json')
-        params.merge!(sk: session_key) if signed && session_key
-        params.merge!(api_sig: sign(params)) if signed
+        params[:api_key] = api_key
+        params[:format] = 'json'
+        params[:sk] = session_key if signed && session_key
+        params[:api_sig] = sign(params) if signed
 
         uri = build_uri(params)
         response = Net::HTTP.get_response(uri)
@@ -150,7 +159,8 @@ module YouFM
         return [] if html.to_s.empty?
         return [] if blocked_web_response?(html)
 
-        anchor_matches = html.scan(%r{<a[^>]*class="[^"]*link-block-target[^"]*"[^>]*href="/music/([^"/?#]+)"[^>]*>(.*?)</a>}im)
+        anchor_matches =
+          html.scan(%r{<a[^>]*class="[^"]*link-block-target[^"]*"[^>]*href="/music/([^"/?#]+)"[^>]*>(.*?)</a>}im)
         anchor_matches = html.scan(%r{<a[^>]*href="/music/([^"/?#]+)"[^>]*>(.*?)</a>}im) if anchor_matches.empty?
 
         seen_names = Set.new

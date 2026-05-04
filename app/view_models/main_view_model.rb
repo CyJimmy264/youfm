@@ -199,8 +199,16 @@ module YouFM
         update_status('Connect Spotify first')
       rescue Services::SpotifyClient::PlaybackUnavailableError, Services::SpotifyClient::DeviceUnavailableError => e
         sync_connection_state!
-        state.devices = source.available_devices rescue []
-        state.playlists = source.playlists rescue []
+        state.devices = begin
+          source.available_devices
+        rescue StandardError
+          []
+        end
+        state.playlists = begin
+          source.playlists
+        rescue StandardError
+          []
+        end
         state.queue_tracks = []
         update_status(friendly_error_message(e))
       rescue StandardError => e
@@ -241,13 +249,13 @@ module YouFM
         state.selected_device_index = index
       end
 
-      def select_playlist_index(index, &on_loaded)
+      def select_playlist_index(index, &)
         return if index.nil?
         return if index.negative?
         return if index >= state.playlists.length
 
         state.selected_playlist_index = index
-        load_selected_playlist_tracks(&on_loaded)
+        load_selected_playlist_tracks(&)
       end
 
       def select_queue_index(index)
@@ -386,7 +394,7 @@ module YouFM
         parsed
       end
 
-      def set_status(message)
+      def status=(message)
         update_status(message)
       end
 
@@ -397,7 +405,8 @@ module YouFM
         return unless @playlist_tracks_has_more
         return if @playlist_tracks_loading
 
-        cached_page = source.cached_playlist_tracks_page(playlist, limit: PLAYLIST_PAGE_SIZE, offset: @playlist_tracks_offset)
+        cached_page = source.cached_playlist_tracks_page(playlist, limit: PLAYLIST_PAGE_SIZE,
+                                                                   offset: @playlist_tracks_offset)
         if cached_page
           append_playlist_tracks_page(playlist, cached_page)
           on_loaded&.call
@@ -638,7 +647,8 @@ module YouFM
         return 'None' unless track
 
         normalized_track_id = track.id.to_s
-        seed = @now_playing_recommendation_seeds[normalized_track_id] || recommendation_seed_store.fetch(normalized_track_id)
+        seed = @now_playing_recommendation_seeds[normalized_track_id] ||
+               recommendation_seed_store.fetch(normalized_track_id)
         @now_playing_recommendation_seeds[normalized_track_id] = seed if seed
         seed || 'None'
       end
@@ -654,7 +664,8 @@ module YouFM
         return if @last_recommendation_seed_track_id == current_track_id
 
         schedule_recommendation_for_track(track)
-        puts "[youfm] playback track changed: previous=#{previous_track_id || 'none'} current=#{current_track_id}; scheduling recommendation"
+        puts "[youfm] playback track changed: previous=#{previous_track_id || 'none'} " \
+             "current=#{current_track_id}; scheduling recommendation"
         enqueue_recommendation_async(trigger: :playback_change)
         :recommendation_queued
       end
@@ -769,7 +780,13 @@ module YouFM
         state.selected_index = tracks.empty? ? nil : 0
         @playlist_tracks_offset = tracks.length
         @playlist_tracks_has_more = page.fetch(:has_more)
-        update_status(tracks.empty? ? "Playlist is empty: #{playlist.name}" : "Loaded #{tracks.length} tracks from #{playlist.name}")
+        update_status(
+          if tracks.empty?
+            "Playlist is empty: #{playlist.name}"
+          else
+            "Loaded #{tracks.length} tracks from #{playlist.name}"
+          end
+        )
       end
 
       def append_playlist_tracks_page(playlist, page)
@@ -779,7 +796,13 @@ module YouFM
         @playlist_tracks_offset += page.fetch(:tracks).length
         @playlist_tracks_has_more = page.fetch(:has_more)
         state.tracks_loading_more = false unless @playlist_tracks_loading
-        update_status(@playlist_tracks_has_more ? "Loaded #{state.search_results.length} tracks from #{playlist.name}" : "Loaded all #{state.search_results.length} tracks from #{playlist.name}")
+        update_status(
+          if @playlist_tracks_has_more
+            "Loaded #{state.search_results.length} tracks from #{playlist.name}"
+          else
+            "Loaded all #{state.search_results.length} tracks from #{playlist.name}"
+          end
+        )
       end
 
       def apply_cached_playlist_tracks(playlist, tracks)
@@ -788,7 +811,13 @@ module YouFM
         state.tracks_title = "Playlist: #{playlist.name}"
         @playlist_tracks_offset = tracks.length
         @playlist_tracks_has_more = false
-        update_status(tracks.empty? ? "Playlist is empty: #{playlist.name}" : "Loaded all #{tracks.length} tracks from #{playlist.name}")
+        update_status(
+          if tracks.empty?
+            "Playlist is empty: #{playlist.name}"
+          else
+            "Loaded all #{tracks.length} tracks from #{playlist.name}"
+          end
+        )
       end
 
       def normalize_similar_artist_pool_limit(value)
@@ -803,13 +832,13 @@ module YouFM
       end
 
       def schedule_queue_refresh_retry(retry_after_seconds)
-        return unless retry_after_seconds && retry_after_seconds.positive?
+        return unless retry_after_seconds&.positive?
 
         @next_queue_refresh_at = Time.now + retry_after_seconds
       end
 
       def queue_rate_limit_message(retry_after_seconds)
-        return 'Queue refresh rate-limited by Spotify' unless retry_after_seconds && retry_after_seconds.positive?
+        return 'Queue refresh rate-limited by Spotify' unless retry_after_seconds&.positive?
 
         "Queue refresh rate-limited by Spotify, retrying in #{retry_after_seconds}s"
       end

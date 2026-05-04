@@ -39,9 +39,10 @@ module YouFM
       private
 
       attr_reader :view_model, :theme, :settings_store, :window, :search_input, :results_list, :playlists_list,
-                  :queue_list, :device_picker, :status_label, :auth_label, :lastfm_auth_label, :device_label, :now_playing_label,
-                  :recommendation_seed_label, :toggle_button, :theme_button, :connect_button, :disconnect_button, :connect_lastfm_button,
-                  :disconnect_lastfm_button, :tracks_title_label, :next_button, :similar_artist_pool_limit_input
+                  :queue_list, :device_picker, :status_label, :auth_label, :lastfm_auth_label, :device_label,
+                  :now_playing_label, :recommendation_seed_label, :toggle_button, :theme_button, :connect_button,
+                  :disconnect_button, :connect_lastfm_button, :disconnect_lastfm_button, :tracks_title_label,
+                  :next_button, :similar_artist_pool_limit_input
 
       def build_window
         @window = QWidget.new do |widget|
@@ -282,7 +283,7 @@ module YouFM
         flags = Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard
         label.text_interaction_flags = flags
       rescue NoMethodError
-        label.set_text_interaction_flags(flags)
+        label.text_interaction_flags = flags
       end
 
       def build_button(parent, object_name, text)
@@ -345,7 +346,7 @@ module YouFM
       def handle_results_scroll
         scrollbar = results_list.verticalScrollBar
         return unless scrollbar
-        return unless scrollbar.maximum > 0
+        return unless scrollbar.maximum.positive?
         return unless scrollbar.value >= scrollbar.maximum - 20
 
         view_model.load_more_playlist_tracks { @render_queue.push(:render_tracks) }
@@ -454,14 +455,15 @@ module YouFM
           @render_queue.push(:render_tracks) if @render_queue.empty?
         end
 
-        while !@render_queue.empty?
+        until @render_queue.empty?
           message = @render_queue.pop(true)
-          if message == :render_full
+          case message
+          when :render_full
             render_full
-          elsif message == :render_tracks
+          when :render_tracks
             adjust_playback_polling!
             render_tracks
-          elsif message == :render_playback
+          when :render_playback
             adjust_playback_polling!
             render_playback
           end
@@ -524,7 +526,7 @@ module YouFM
         saved_limit = settings_store.read_similar_artist_pool_limit
         return similar_artist_pool_limit_input.text = view_model.similar_artist_pool_limit.to_s if saved_limit.nil?
 
-        applied_limit = view_model.set_similar_artist_pool_limit(saved_limit)
+        applied_limit = view_model.similar_artist_pool_limit = saved_limit
         similar_artist_pool_limit_input.text = (applied_limit || view_model.similar_artist_pool_limit).to_s
       rescue StandardError => e
         warn("[youfm] load similar artist pool limit failed: #{e.class}: #{e.message}")
@@ -586,9 +588,9 @@ module YouFM
         results_list.add_item(loader_item_text) if state.tracks_loading_more
         results_list.current_row = state.selected_index if state.selected_index
         results_list.block_signals(false)
-        if scrollbar && !previous_scroll_value.nil?
-          scrollbar.value = [previous_scroll_value, scrollbar.maximum].min
-        end
+        return unless scrollbar && !previous_scroll_value.nil?
+
+        scrollbar.value = [previous_scroll_value, scrollbar.maximum].min
       end
 
       def loader_item_text
