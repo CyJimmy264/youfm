@@ -52,6 +52,57 @@ module YouFM
             border: 1px solid #2b3340;
           }
 
+          QScrollBar:vertical,
+          QScrollBar:horizontal {
+            background: transparent;
+            border: none;
+            margin: 0;
+          }
+
+          QScrollBar:vertical {
+            width: 10px;
+          }
+
+          QScrollBar::handle:vertical {
+            background: #465062;
+            min-height: 24px;
+            border-radius: 5px;
+          }
+
+          QScrollBar::handle:vertical:hover {
+            background: #586478;
+          }
+
+          QScrollBar::add-line:vertical,
+          QScrollBar::sub-line:vertical,
+          QScrollBar::add-page:vertical,
+          QScrollBar::sub-page:vertical {
+            background: transparent;
+            border: none;
+          }
+
+          QScrollBar:horizontal {
+            height: 10px;
+          }
+
+          QScrollBar::handle:horizontal {
+            background: #465062;
+            min-width: 24px;
+            border-radius: 5px;
+          }
+
+          QScrollBar::handle:horizontal:hover {
+            background: #586478;
+          }
+
+          QScrollBar::add-line:horizontal,
+          QScrollBar::sub-line:horizontal,
+          QScrollBar::add-page:horizontal,
+          QScrollBar::sub-page:horizontal {
+            background: transparent;
+            border: none;
+          }
+
           QListWidget#results_list {
             background: #151922;
             border: 1px solid #232a36;
@@ -124,6 +175,57 @@ module YouFM
           QPushButton#ghost_button {
             background: #fffdf8;
             border: 1px solid #d4c9b7;
+          }
+
+          QScrollBar:vertical,
+          QScrollBar:horizontal {
+            background: transparent;
+            border: none;
+            margin: 0;
+          }
+
+          QScrollBar:vertical {
+            width: 10px;
+          }
+
+          QScrollBar::handle:vertical {
+            background: #b8a68a;
+            min-height: 24px;
+            border-radius: 5px;
+          }
+
+          QScrollBar::handle:vertical:hover {
+            background: #a89272;
+          }
+
+          QScrollBar::add-line:vertical,
+          QScrollBar::sub-line:vertical,
+          QScrollBar::add-page:vertical,
+          QScrollBar::sub-page:vertical {
+            background: transparent;
+            border: none;
+          }
+
+          QScrollBar:horizontal {
+            height: 10px;
+          }
+
+          QScrollBar::handle:horizontal {
+            background: #b8a68a;
+            min-width: 24px;
+            border-radius: 5px;
+          }
+
+          QScrollBar::handle:horizontal:hover {
+            background: #a89272;
+          }
+
+          QScrollBar::add-line:horizontal,
+          QScrollBar::sub-line:horizontal,
+          QScrollBar::add-page:horizontal,
+          QScrollBar::sub-page:horizontal {
+            background: transparent;
+            border: none;
           }
 
           QListWidget#results_list {
