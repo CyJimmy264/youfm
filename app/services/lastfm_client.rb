@@ -24,8 +24,8 @@ module YouFM
         @similar_artists_cache = similar_artists_cache
       end
 
-      SimilarArtist = Struct.new(:name, :match, keyword_init: true)
-      TopTrack = Struct.new(:name, :playcount, :listeners, keyword_init: true)
+      SimilarArtist = Struct.new(:name, :match)
+      TopTrack = Struct.new(:name, :playcount, :listeners)
 
       def auth_get_token
         get({ method: 'auth.getToken' })

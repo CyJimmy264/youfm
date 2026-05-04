@@ -224,15 +224,6 @@ Style/CaseLikeIf:
 Style/Documentation:
   Enabled: false
 
-# Offense count: 3
-# This cop supports safe autocorrection (--autocorrect).
-# Configuration parameters: AllowedVars, DefaultToNil.
-Style/FetchEnvVar:
-  Exclude:
-    - 'lib/youfm/configuration.rb'
-    - 'spec/youfm/services/lastfm_similar_artists_cache_spec.rb'
-    - 'spec/youfm/services/spotify_playlist_cache_spec.rb'
-
 # Offense count: 1
 # This cop supports safe autocorrection (--autocorrect).
 # Configuration parameters: MinBodyLength, AllowConsecutiveConditionals.
@@ -275,20 +266,6 @@ Style/NumericPredicate:
 Style/RedundantArgument:
   Exclude:
     - 'app/services/spotify_authenticator.rb'
-
-# Offense count: 2
-# This cop supports safe autocorrection (--autocorrect).
-Style/RedundantFreeze:
-  Exclude:
-    - 'app/services/spotify_authenticator.rb'
-
-# Offense count: 4
-# This cop supports unsafe autocorrection (--autocorrect-all).
-Style/RedundantStructKeywordInit:
-  Exclude:
-    - 'app/services/lastfm_client.rb'
-    - 'app/services/recommendation_generator.rb'
-    - 'app/view_models/main_view_model.rb'
 
 # Offense count: 2
 # This cop supports safe autocorrection (--autocorrect).

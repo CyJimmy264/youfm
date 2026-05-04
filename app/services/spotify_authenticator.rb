@@ -8,7 +8,7 @@ module YouFM
       class Error < StandardError; end
       class CallbackTimeoutError < Error; end
 
-      SUCCESS_RESPONSE = <<~HTML.freeze
+      SUCCESS_RESPONSE = <<~HTML
         HTTP/1.1 200 OK
         Content-Type: text/html; charset=utf-8
         Connection: close
@@ -21,7 +21,7 @@ module YouFM
         </html>
       HTML
 
-      FAILURE_RESPONSE = <<~HTML.freeze
+      FAILURE_RESPONSE = <<~HTML
         HTTP/1.1 400 Bad Request
         Content-Type: text/html; charset=utf-8
         Connection: close

@@ -29,8 +29,7 @@ module YouFM
         :now_playing,
         :recommendation_seed,
         :selected_queue_recommendation_seed,
-        :playing,
-        keyword_init: true
+        :playing
       )
 
       def initialize(source:, recommendation_coordinator:, recommendation_seed_store:, lastfm_authenticator:)
@@ -101,10 +100,8 @@ module YouFM
         update_status('Spotify authorization completed')
       rescue Services::SpotifyAuthenticator::CallbackTimeoutError
         update_status('Timed out waiting for Spotify authorization callback')
-      rescue Services::SpotifyAuthenticator::Error => e
-        update_status("Spotify auth failed: #{e.message}")
-      rescue StandardError => e
-        update_status("Spotify auth failed: #{e.message}")
+      rescue Services::SpotifyAuthenticator::Error, StandardError => e
+        report_auth_failure('Spotify auth failed', e)
       end
 
       def connect_lastfm
@@ -113,10 +110,8 @@ module YouFM
         update_status('Last.fm authorization completed')
       rescue Services::LastfmAuthenticator::CallbackTimeoutError
         update_status('Timed out waiting for Last.fm authorization callback')
-      rescue Services::LastfmAuthenticator::Error => e
-        update_status("Last.fm auth failed: #{e.message}")
-      rescue StandardError => e
-        update_status("Last.fm auth failed: #{e.message}")
+      rescue Services::LastfmAuthenticator::Error, StandardError => e
+        report_auth_failure('Last.fm auth failed', e)
       end
 
       def disconnect_spotify
@@ -604,6 +599,10 @@ module YouFM
         else
           error.message
         end
+      end
+
+      def report_auth_failure(prefix, error)
+        update_status("#{prefix}: #{error.message}")
       end
 
       def update_status(message)

@@ -6,7 +6,7 @@ require 'tmpdir'
 RSpec.describe YouFM::Services::LastfmSimilarArtistsCache do
   it 'stores cache data in an XDG-friendly cache path by default' do
     Dir.mktmpdir do |tmpdir|
-      original = ENV['XDG_CACHE_HOME']
+      original = ENV.fetch('XDG_CACHE_HOME', nil)
       ENV['XDG_CACHE_HOME'] = tmpdir
 
       cache = described_class.new

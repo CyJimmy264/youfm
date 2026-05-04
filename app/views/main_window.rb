@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require 'thread'
-
 module YouFM
   module Views
     class MainWindow

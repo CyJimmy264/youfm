@@ -11,7 +11,7 @@ module YouFM
       @theme_name = 'dark'
       @spotify_api_base_url = 'https://api.spotify.com/v1'
       @spotify_accounts_base_url = 'https://accounts.spotify.com'
-      @spotify_access_token = ENV['SPOTIFY_ACCESS_TOKEN']
+      @spotify_access_token = ENV.fetch('SPOTIFY_ACCESS_TOKEN', nil)
       @spotify_client_id = ENV.fetch('SPOTIFY_CLIENT_ID', '39e3731f46c040bbb68cbaa98cb809ef')
       @spotify_redirect_uri = ENV.fetch('SPOTIFY_REDIRECT_URI', 'http://127.0.0.1:8989/callback')
       @spotify_scopes = %w[

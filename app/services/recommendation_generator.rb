@@ -7,7 +7,7 @@ module YouFM
       SIMILAR_ARTIST_WINDOW_SIZE = 10
       TOP_TRACK_WINDOW_SIZE = 7
       TOP_TRACK_ATTEMPTS_PER_ARTIST = 3
-      Recommendation = Struct.new(:track, :seed_track, keyword_init: true)
+      Recommendation = Struct.new(:track, :seed_track)
 
       def initialize(lastfm_client:, spotify_client:, similar_artist_pool_limit: DEFAULT_SIMILAR_ARTIST_POOL_LIMIT)
         @lastfm_client = lastfm_client
