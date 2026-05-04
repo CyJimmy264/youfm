@@ -61,25 +61,25 @@ module YouFM
         dispatch_action(request.query['name'].to_s, request.query.dup)
         redirect_home(response)
       rescue StandardError => e
-        mutex.synchronize { view_model.state.status_message = "Web UI action failed: #{e.message}" }
+        mutex.synchronize { view_model.set_status("Web UI action failed: #{e.message}") }
         redirect_home(response)
       end
 
       def dispatch_action(name, params)
         mutex.synchronize do
           if @action_in_flight
-            view_model.state.status_message = 'Web UI action skipped: another action is still running'
+            view_model.set_status('Web UI action skipped: another action is still running')
             return
           end
 
           @action_in_flight = true
-          view_model.state.status_message = "Web UI action queued: #{action_label(name)}"
+          view_model.set_status("Web UI action queued: #{action_label(name)}")
         end
 
         Thread.new do
           mutex.synchronize { run_action(name, params) }
         rescue StandardError => e
-          mutex.synchronize { view_model.state.status_message = "Web UI action failed: #{e.message}" }
+          mutex.synchronize { view_model.set_status("Web UI action failed: #{e.message}") }
         ensure
           mutex.synchronize { @action_in_flight = false }
         end
@@ -101,7 +101,7 @@ module YouFM
         when 'sync_library'
           view_model.refresh_library
         else
-          view_model.state.status_message = 'Unknown Web UI action'
+          view_model.set_status('Unknown Web UI action')
         end
       end
 

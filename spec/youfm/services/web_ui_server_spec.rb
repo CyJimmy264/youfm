@@ -22,7 +22,8 @@ RSpec.describe YouFM::Services::WebUiServer do
       generate_recommendation: nil,
       update_similar_artist_pool_limit: 300,
       refresh_playback: nil,
-      refresh_library: nil
+      refresh_library: nil,
+      set_status: nil
     )
   end
   let(:settings_store) { instance_double(YouFM::Services::SettingsStore, write_similar_artist_pool_limit: nil) }

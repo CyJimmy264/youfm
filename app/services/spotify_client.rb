@@ -3,6 +3,7 @@
 module YouFM
   module Services
     class SpotifyClient
+      PLAYLIST_TRACK_FIELDS = 'items(item(id,type,name,artists(name),album(name),uri,duration_ms)),next'
       class Error < StandardError; end
       class AuthenticationError < Error; end
       class PlaybackUnavailableError < Error; end
@@ -89,7 +90,10 @@ module YouFM
         puts "[youfm] spotify playlist page cache miss: playlist_id=#{playlist_id} snapshot_id=#{snapshot_id || 'none'} offset=#{offset} limit=#{limit}"
 
         started_at = Time.now
-        body = get("/playlists/#{playlist_id}/items", { limit: limit, offset: offset })
+        body = get(
+          "/playlists/#{playlist_id}/items",
+          { limit: limit, offset: offset, fields: PLAYLIST_TRACK_FIELDS }
+        )
         elapsed = Time.now - started_at
         puts format(
           '[youfm] spotify playlist page fetched: playlist_id=%<playlist_id>s offset=%<offset>s limit=%<limit>s elapsed=%<elapsed>.2fs',
@@ -297,15 +301,15 @@ module YouFM
           response = perform_request(request, refreshed_token)
         end
 
-        handle_response(response)
+        handle_response(response, request)
       end
 
-      def handle_response(response)
+      def handle_response(response, request)
         code = response.code.to_i
         body = response.body.to_s
         raise AuthenticationError, 'Spotify access token is missing or expired' if code == 401
         raise rate_limited_error_for(response, body) if code == 429
-        raise playback_error_for(code, body) if playback_error_for(code, body)
+        raise playback_error_for(code, body, request) if playback_error_for(code, body, request)
         raise Error, extract_error_message(body) if code >= 400 && code != 204
 
         return [{}, 204] if code == 204 || body.strip.empty?
@@ -356,6 +360,7 @@ module YouFM
         request['Authorization'] = "Bearer #{token}"
         request['Content-Type'] = 'application/json'
 
+        puts "[youfm] spotify request: #{request.method} #{request.uri}"
         Net::HTTP.start(
           request.uri.host,
           request.uri.port,
@@ -369,12 +374,18 @@ module YouFM
         raise TimeoutError, 'Spotify request timed out'
       end
 
-      def playback_error_for(code, body)
+      def playback_error_for(code, body, request)
+        return nil unless playback_request?(request)
+
         message = extract_error_message(body)
         return PlaybackUnavailableError.new(message) if code == 403
         return DeviceUnavailableError.new(message) if code == 404
 
         nil
+      end
+
+      def playback_request?(request)
+        request.uri.path.include?('/me/player')
       end
 
       def rate_limited_error_for(response, body)

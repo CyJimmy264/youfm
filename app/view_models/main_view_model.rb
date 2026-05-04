@@ -49,6 +49,7 @@ module YouFM
         @playlist_tracks_loading = false
         @playlist_tracks_loading_label = nil
         @playlist_tracks_loading_started_at = nil
+        @playlist_tracks_loading_elapsed = nil
         @next_queue_refresh_at = nil
         @state = State.new(
           source_name: source.name,
@@ -390,6 +391,10 @@ module YouFM
         parsed
       end
 
+      def set_status(message)
+        update_status(message)
+      end
+
       def load_more_playlist_tracks(&on_loaded)
         playlist = selected_playlist
         return unless playlist
@@ -424,6 +429,9 @@ module YouFM
         return unless @playlist_tracks_loading && @playlist_tracks_loading_started_at
 
         elapsed = (Time.now - @playlist_tracks_loading_started_at).floor
+        return if @playlist_tracks_loading_elapsed == elapsed
+
+        @playlist_tracks_loading_elapsed = elapsed
         update_status("#{@playlist_tracks_loading_label}... #{elapsed}s")
       end
 
@@ -599,7 +607,11 @@ module YouFM
       end
 
       def update_status(message)
+        return message if state.status_message == message
+
         state.status_message = message
+        puts "[youfm] status: #{message}"
+        message
       end
 
       def append_recommended_track_to_local_queue(track, seed_label)
@@ -734,18 +746,21 @@ module YouFM
         @playlist_tracks_loading = false
         @playlist_tracks_loading_label = nil
         @playlist_tracks_loading_started_at = nil
+        @playlist_tracks_loading_elapsed = nil
         state.tracks_loading_more = false
       end
 
       def start_playlist_loading_status!(label)
         @playlist_tracks_loading_label = label
         @playlist_tracks_loading_started_at = Time.now
+        @playlist_tracks_loading_elapsed = nil
       end
 
       def finish_playlist_loading!
         @playlist_tracks_loading = false
         @playlist_tracks_loading_label = nil
         @playlist_tracks_loading_started_at = nil
+        @playlist_tracks_loading_elapsed = nil
         state.tracks_loading_more = false
       end
 

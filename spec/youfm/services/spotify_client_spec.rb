@@ -182,6 +182,25 @@ RSpec.describe YouFM::Services::SpotifyClient do
     end
   end
 
+  describe '#play_track' do
+    it 'keeps player 403 errors as playback unavailable errors' do
+      client = described_class.new(access_token: 'token', base_url: 'https://api.spotify.test/v1')
+      response = instance_double(
+        Net::HTTPResponse,
+        code: '403',
+        body: JSON.dump('error' => { 'message' => 'Premium required' })
+      )
+      http = instance_double(Net::HTTP, request: response)
+
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+
+      expect { client.play_track('spotify:track:1') }.to raise_error(
+        YouFM::Services::SpotifyClient::PlaybackUnavailableError,
+        'Premium required'
+      )
+    end
+  end
+
   describe '#current_user_playlists' do
     it 'uses items.total when Spotify returns the new playlist shape' do
       client = described_class.new(access_token: 'token', base_url: 'https://api.spotify.test/v1')
@@ -272,6 +291,28 @@ RSpec.describe YouFM::Services::SpotifyClient do
 
       expect(result[:has_more]).to be(true)
       expect(result[:tracks].map(&:display_label)).to eq(['Track - Artist'])
+      expect(http).to have_received(:request) do |request|
+        expect(URI.decode_www_form(request.uri.query).to_h).to include(
+          'fields' => YouFM::Services::SpotifyClient::PLAYLIST_TRACK_FIELDS
+        )
+      end
+    end
+
+    it 'keeps playlist item 403 errors as generic Spotify errors' do
+      client = described_class.new(access_token: 'token', base_url: 'https://api.spotify.test/v1')
+      response = instance_double(
+        Net::HTTPResponse,
+        code: '403',
+        body: JSON.dump('error' => { 'message' => 'Insufficient client scope' })
+      )
+      http = instance_double(Net::HTTP, request: response)
+
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+
+      expect { client.playlist_tracks_page('playlist-1', limit: 100, offset: 0) }.to raise_error(
+        YouFM::Services::SpotifyClient::Error,
+        'Insufficient client scope'
+      )
     end
 
     it 'uses cached playlist pages when snapshot id matches' do

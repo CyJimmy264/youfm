@@ -125,6 +125,14 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     expect(recommendation_generator).not_to have_received(:similar_artist_pool_limit=)
   end
 
+  it 'logs status changes to stdout' do
+    view_model = build_view_model
+
+    expect { view_model.set_status('Visible status') }.to output("[youfm] status: Visible status\n").to_stdout
+    expect { view_model.set_status('Visible status') }.not_to output.to_stdout
+    expect(view_model.state.status_message).to eq('Visible status')
+  end
+
   it 'connects Spotify and refreshes device and playlist state' do
     device = YouFM::Models::Device.new(id: 'd1', name: 'MacBook', type: 'Computer', active: true, restricted: false)
     playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 10, snapshot_id: 'snap-1')
@@ -260,6 +268,24 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     expect(view_model.state.search_results).to eq([track])
   end
 
+  it 'logs Spotify playlist request failures to stdout' do
+    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 10, snapshot_id: 'snap-1')
+
+    allow(source).to receive(:cached_playlist_tracks).with(playlist, limit: 100).and_return(nil)
+    allow(source).to receive(:cached_playlist_tracks_page).with(playlist, limit: 100, offset: 0).and_return(nil)
+    allow(source).to receive(:playlist_tracks_page).with(playlist, limit: 100, offset: 0).and_raise(
+      YouFM::Services::SpotifyClient::TimeoutError,
+      'Spotify request timed out'
+    )
+
+    view_model = build_view_model
+    view_model.state.playlists = [playlist]
+
+    expect { view_model.select_playlist_index(0) }.to output(
+      a_string_including('[youfm] status: Playlist tracks failed: Spotify request timed out')
+    ).to_stdout
+  end
+
   it 'updates playlist loading status with elapsed seconds while async loading is active' do
     playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 10, snapshot_id: 'snap-1')
     callback = proc {}
@@ -269,14 +295,17 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     allow(source).to receive(:cached_playlist_tracks_page).with(playlist, limit: 100, offset: 0).and_return(nil)
 
     now = Time.utc(2026, 5, 4, 10, 0, 0)
-    allow(Time).to receive(:now).and_return(now, now + 12)
+    allow(Time).to receive(:now).and_return(now, now + 12, now + 12, now + 13)
 
     view_model = build_view_model
     view_model.state.playlists = [playlist]
     view_model.select_playlist_index(0, &callback)
     view_model.refresh_playlist_loading_status
+    view_model.refresh_playlist_loading_status
 
     expect(view_model.state.status_message).to eq('Loading tracks from Daily... 12s')
+    view_model.refresh_playlist_loading_status
+    expect(view_model.state.status_message).to eq('Loading tracks from Daily... 13s')
   end
 
   it 'uses cached first playlist page immediately without waiting for a thread' do
