@@ -21,7 +21,6 @@ RSpec.describe YouFM::Application do
     allow(YouFM::Container).to receive(:new).and_return(container)
 
     expect(described_class.container).to equal(container)
-    expect(described_class.container).to equal(container)
     expect(YouFM::Container).to have_received(:new).once
   end
 

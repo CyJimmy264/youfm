@@ -116,28 +116,9 @@ module YouFM
 
       def disconnect_spotify
         source.disconnect!
-        @last_playing_track_id = nil
-        @recently_played_track_ids = []
-        @last_recommendation_seed_track_id = nil
-        @now_playing_recommendation_seeds = {}
+        reset_spotify_session_state
         recommendation_coordinator.reset
-        @next_queue_refresh_at = nil
-        reset_playlist_pagination
-        state.devices = []
-        state.selected_device_index = nil
-        state.playlists = []
-        state.selected_playlist_index = nil
-        state.queue_tracks = []
-        state.queue_recommendation_seeds = {}
-        state.search_results = []
-        state.selected_index = nil
-        state.tracks_loading_more = false
-        state.tracks_title = 'Tracks'
-        state.device_name = nil
-        state.now_playing = 'No active playback'
-        state.recommendation_seed = 'None'
-        state.selected_queue_recommendation_seed = 'None'
-        state.playing = false
+        reset_view_state
         sync_connection_state!
         update_status('Spotify session cleared')
       rescue StandardError => e
@@ -188,8 +169,7 @@ module YouFM
       end
 
       def refresh_library
-        state.devices = source.available_devices
-        state.playlists = source.playlists
+        load_library_snapshot
         refresh_queue
         refresh_playback
         align_selections
@@ -199,16 +179,7 @@ module YouFM
         update_status('Connect Spotify first')
       rescue Services::SpotifyClient::PlaybackUnavailableError, Services::SpotifyClient::DeviceUnavailableError => e
         sync_connection_state!
-        state.devices = begin
-          source.available_devices
-        rescue StandardError
-          []
-        end
-        state.playlists = begin
-          source.playlists
-        rescue StandardError
-          []
-        end
+        restore_library_snapshot
         state.queue_tracks = []
         update_status(friendly_error_message(e))
       rescue StandardError => e
@@ -378,7 +349,7 @@ module YouFM
         recommendation_coordinator.similar_artist_pool_limit
       end
 
-      def set_similar_artist_pool_limit(value)
+      def parse_similar_artist_pool_limit(value)
         parsed = normalize_similar_artist_pool_limit(value)
         return nil unless parsed
 
@@ -387,7 +358,7 @@ module YouFM
       end
 
       def update_similar_artist_pool_limit(value)
-        parsed = set_similar_artist_pool_limit(value)
+        parsed = parse_similar_artist_pool_limit(value)
         return update_status('Similar artist pool limit must be a positive integer') unless parsed
 
         update_status("Similar artist pool limit set to #{parsed}")
@@ -485,35 +456,9 @@ module YouFM
         update_status("Loading tracks from #{playlist.name}...")
         on_loaded&.call
 
-        cached_tracks = source.cached_playlist_tracks(playlist, limit: PLAYLIST_PAGE_SIZE)
-        if cached_tracks
-          apply_cached_playlist_tracks(playlist, cached_tracks)
-          state.tracks_loading_more = false
-          on_loaded&.call
-          return
-        end
+        return if cached_playlist_tracks_loaded?(playlist, on_loaded)
 
-        cached_page = source.cached_playlist_tracks_page(playlist, limit: PLAYLIST_PAGE_SIZE, offset: 0)
-        if cached_page
-          apply_playlist_tracks_page(playlist, cached_page)
-          state.tracks_loading_more = false
-          on_loaded&.call
-          return
-        end
-
-        @playlist_tracks_loading = true
-        start_playlist_loading_status!("Loading tracks from #{playlist.name}")
-        Thread.new do
-          page = source.playlist_tracks_page(playlist, limit: PLAYLIST_PAGE_SIZE, offset: 0)
-          apply_playlist_tracks_page(playlist, page)
-        rescue Services::SpotifyClient::AuthenticationError
-          update_status('Connect Spotify first')
-        rescue StandardError => e
-          update_status("Playlist tracks failed: #{friendly_error_message(e)}")
-        ensure
-          finish_playlist_loading!
-          on_loaded&.call
-        end
+        start_playlist_tracks_async(playlist, on_loaded, loading_message: "Loading tracks from #{playlist.name}")
       end
 
       def align_selections
@@ -737,6 +682,67 @@ module YouFM
         state.selected_queue_recommendation_seed = seed.to_s.empty? ? 'None' : seed
       end
 
+      def reset_spotify_session_state
+        @last_playing_track_id = nil
+        @recently_played_track_ids = []
+        @last_recommendation_seed_track_id = nil
+        @now_playing_recommendation_seeds = {}
+        @next_queue_refresh_at = nil
+        reset_playlist_pagination
+      end
+
+      def reset_view_state
+        state.devices = []
+        state.selected_device_index = nil
+        state.playlists = []
+        state.selected_playlist_index = nil
+        state.queue_tracks = []
+        state.queue_recommendation_seeds = {}
+        state.search_results = []
+        state.selected_index = nil
+        state.tracks_loading_more = false
+        state.tracks_title = 'Tracks'
+        state.device_name = nil
+        state.now_playing = 'No active playback'
+        state.recommendation_seed = 'None'
+        state.selected_queue_recommendation_seed = 'None'
+        state.playing = false
+      end
+
+      def cached_playlist_tracks_loaded?(playlist, on_loaded)
+        cached_tracks = source.cached_playlist_tracks(playlist, limit: PLAYLIST_PAGE_SIZE)
+        if cached_tracks
+          apply_cached_playlist_tracks(playlist, cached_tracks)
+          state.tracks_loading_more = false
+          on_loaded&.call
+          return true
+        end
+
+        cached_page = source.cached_playlist_tracks_page(playlist, limit: PLAYLIST_PAGE_SIZE, offset: 0)
+        return false unless cached_page
+
+        apply_playlist_tracks_page(playlist, cached_page)
+        state.tracks_loading_more = false
+        on_loaded&.call
+        true
+      end
+
+      def start_playlist_tracks_async(playlist, on_loaded, loading_message:)
+        @playlist_tracks_loading = true
+        start_playlist_loading_status!(loading_message)
+        Thread.new do
+          page = source.playlist_tracks_page(playlist, limit: PLAYLIST_PAGE_SIZE, offset: 0)
+          apply_playlist_tracks_page(playlist, page)
+        rescue Services::SpotifyClient::AuthenticationError
+          update_status('Connect Spotify first')
+        rescue StandardError => e
+          update_status("Playlist tracks failed: #{friendly_error_message(e)}")
+        ensure
+          finish_playlist_loading!
+          on_loaded&.call
+        end
+      end
+
       def recommendation_context(trigger)
         {
           seed_tracks: recommendation_seed_tracks,
@@ -764,6 +770,24 @@ module YouFM
         @playlist_tracks_loading_label = label
         @playlist_tracks_loading_started_at = Time.now
         @playlist_tracks_loading_elapsed = nil
+      end
+
+      def load_library_snapshot
+        state.devices = source.available_devices
+        state.playlists = source.playlists
+      end
+
+      def restore_library_snapshot
+        state.devices = begin
+          source.available_devices
+        rescue StandardError
+          []
+        end
+        state.playlists = begin
+          source.playlists
+        rescue StandardError
+          []
+        end
       end
 
       def finish_playlist_loading!

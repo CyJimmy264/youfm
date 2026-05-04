@@ -51,12 +51,13 @@ RSpec.describe YouFM::Services::LastfmClient do
       allow(client).to receive(:fetch_similar_artists_from_web).with('Air', limit: 150).and_return(
         Array.new(60) { |index| { 'name' => "Web Artist #{index}", 'match' => '0.4' } }
       )
-      expect(client).not_to receive(:fetch_similar_artists_via_api)
+      allow(client).to receive(:fetch_similar_artists_via_api).and_call_original
 
       result = client.get_similar_artists('Air', limit: 150)
 
       expect(result.length).to eq(150)
       expect(result.first(100).map(&:name)).to eq(Array.new(100) { |index| "Cached Artist #{index}" })
+      expect(client).not_to have_received(:fetch_similar_artists_via_api)
       expect(cache).to have_received(:save).with(
         'Air',
         array_including({ 'name' => 'Web Artist 0', 'match' => '0.4' })

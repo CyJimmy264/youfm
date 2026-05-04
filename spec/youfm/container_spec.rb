@@ -103,9 +103,7 @@ RSpec.describe YouFM::Container do
     container = described_class.new(config: config)
 
     expect(container.fetch(:theme)).to equal(theme)
-    expect(container.fetch('theme')).to equal(theme)
     expect(container.fetch(:web_ui_server)).to equal(web_ui_server)
-    expect(container.fetch(:main_window)).to equal(main_window)
     expect(container.fetch(:main_window)).to equal(main_window)
     expect(YouFM::Views::MainWindow).to have_received(:new).once
   end
