@@ -21,7 +21,7 @@ module YouFM
       end
 
       def clear
-        File.delete(path) if File.exist?(path)
+        FileUtils.rm_f(path)
       end
 
       private

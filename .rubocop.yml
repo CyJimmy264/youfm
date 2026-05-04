@@ -1,0 +1,67 @@
+require:
+  - ./lib/rubocop/cop/qt/prefer_ruby_style_setter.rb
+
+plugins:
+  - rubocop-performance
+  - rubocop-rake
+  - rubocop-rspec
+
+AllCops:
+  NewCops: enable
+  SuggestExtensions: false
+  TargetRubyVersion: 3.2
+  UseCache: false
+  Exclude:
+    - 'coverage/**/*'
+    - 'vendor/**/*'
+    - 'build/**/*'
+
+Layout/LineLength:
+  Max: 120
+
+Metrics/BlockLength:
+  CountAsOne:
+    - array
+    - hash
+    - heredoc
+    - method_call
+
+Metrics/MethodLength:
+  CountAsOne:
+    - array
+    - hash
+    - heredoc
+    - method_call
+
+Metrics/ModuleLength:
+  CountAsOne:
+    - array
+    - hash
+    - heredoc
+    - method_call
+
+Style/Documentation:
+  Exclude:
+    - 'spec/**/*'
+    - 'test/**/*'
+
+Naming/PredicateMethod:
+  AllowedMethods:
+    - on_event
+    - on_signal
+    - off_event
+    - off_signal
+
+RSpec/SharedExamples:
+  EnforcedStyle: symbol
+
+RSpec/SpecFilePathFormat:
+  CustomTransform:
+    YouFM: youfm
+
+Qt/PreferRubyStyleSetter:
+  Include:
+    - 'app/**/*.rb'
+
+inherit_from:
+  - .rubocop_todo.yml

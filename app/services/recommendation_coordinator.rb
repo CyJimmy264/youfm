@@ -34,9 +34,7 @@ module YouFM
         return recommendation_status(trigger, :not_found, update_status:) unless recommended_track
 
         seed_label = seed_label_for(recommendation.seed_track, playlist_name)
-        if queue_tracks.any? { |track| track.id == recommended_track.id }
-          return recommendation_status(trigger, :duplicate, update_status:)
-        end
+        return recommendation_status(trigger, :duplicate, update_status:) if queue_tracks.any? { |track| track.id == recommended_track.id }
 
         source.add_to_queue(recommended_track)
         seed_store.save(recommended_track.id, seed_label, label: recommended_track.display_label)
@@ -73,15 +71,7 @@ module YouFM
       end
 
       def recommendation_status(trigger, reason, update_status:)
-        prefix =
-          case trigger
-          when :manual
-            'Recommendation skipped'
-          when :playback_change
-            'Auto-recommendation skipped'
-          else
-            'Recommendation skipped'
-          end
+        prefix = trigger == :playback_change ? 'Auto-recommendation skipped' : 'Recommendation skipped'
 
         details =
           case reason

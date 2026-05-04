@@ -5,7 +5,6 @@ require 'json'
 require 'digest/md5'
 require 'time'
 require 'cgi'
-require 'set'
 require 'uri'
 
 module YouFM
@@ -29,11 +28,11 @@ module YouFM
       TopTrack = Struct.new(:name, :playcount, :listeners, keyword_init: true)
 
       def auth_get_token
-        get({method: 'auth.getToken'})
+        get({ method: 'auth.getToken' })
       end
 
       def auth_get_session(token)
-        get({method: 'auth.getSession', token: token}, signed: true)
+        get({ method: 'auth.getSession', token: token }, signed: true)
       end
 
       def get_similar_artists(artist_name, limit: nil)
@@ -59,7 +58,7 @@ module YouFM
       end
 
       def get_top_tracks(artist_name, limit: 10, period: '12month')
-        body = get({method: 'artist.getTopTracks', artist: artist_name, limit: limit, period: period}, signed: true)
+        body = get({ method: 'artist.getTopTracks', artist: artist_name, limit: limit, period: period }, signed: true)
         tracks = body.dig('toptracks', 'track') || []
         tracks.map do |track_data|
           TopTrack.new(
@@ -75,7 +74,7 @@ module YouFM
       attr_reader :api_key, :secret, :session_key, :base_url, :similar_artists_cache
 
       def fetch_similar_artists_via_api(artist_name)
-        body = get({method: 'artist.getSimilar', artist: artist_name}, signed: true)
+        body = get({ method: 'artist.getSimilar', artist: artist_name }, signed: true)
         Array(body.dig('similarartists', 'artist')).first(SIMILAR_ARTISTS_API_LIMIT)
       end
 
