@@ -47,6 +47,8 @@ module YouFM
         @playlist_tracks_offset = 0
         @playlist_tracks_has_more = false
         @playlist_tracks_loading = false
+        @playlist_tracks_loading_label = nil
+        @playlist_tracks_loading_started_at = nil
         @next_queue_refresh_at = nil
         @state = State.new(
           source_name: source.name,
@@ -403,21 +405,26 @@ module YouFM
         end
 
         @playlist_tracks_loading = true
+        start_playlist_loading_status!("Loading more tracks from #{playlist.name}")
         state.tracks_loading_more = true
         Thread.new do
           page = source.playlist_tracks_page(playlist, limit: PLAYLIST_PAGE_SIZE, offset: @playlist_tracks_offset)
           append_playlist_tracks_page(playlist, page)
-          on_loaded&.call
         rescue Services::SpotifyClient::AuthenticationError
           update_status('Connect Spotify first')
-          on_loaded&.call
         rescue StandardError => e
           update_status("Playlist tracks failed: #{friendly_error_message(e)}")
-          on_loaded&.call
         ensure
-          @playlist_tracks_loading = false
-          state.tracks_loading_more = false
+          finish_playlist_loading!
+          on_loaded&.call
         end
+      end
+
+      def refresh_playlist_loading_status
+        return unless @playlist_tracks_loading && @playlist_tracks_loading_started_at
+
+        elapsed = (Time.now - @playlist_tracks_loading_started_at).floor
+        update_status("#{@playlist_tracks_loading_label}... #{elapsed}s")
       end
 
       private
@@ -477,26 +484,23 @@ module YouFM
         cached_page = source.cached_playlist_tracks_page(playlist, limit: PLAYLIST_PAGE_SIZE, offset: 0)
         if cached_page
           apply_playlist_tracks_page(playlist, cached_page)
-          state.tracks_loading_more = cached_page[:has_more]
+          state.tracks_loading_more = false
           on_loaded&.call
           return
         end
 
         @playlist_tracks_loading = true
+        start_playlist_loading_status!("Loading tracks from #{playlist.name}")
         Thread.new do
           page = source.playlist_tracks_page(playlist, limit: PLAYLIST_PAGE_SIZE, offset: 0)
           apply_playlist_tracks_page(playlist, page)
-          state.tracks_loading_more = page[:has_more]
-          on_loaded&.call
         rescue Services::SpotifyClient::AuthenticationError
           update_status('Connect Spotify first')
-          on_loaded&.call
         rescue StandardError => e
           update_status("Playlist tracks failed: #{friendly_error_message(e)}")
-          on_loaded&.call
         ensure
-          @playlist_tracks_loading = false
-          state.tracks_loading_more = false
+          finish_playlist_loading!
+          on_loaded&.call
         end
       end
 
@@ -728,6 +732,20 @@ module YouFM
         @playlist_tracks_offset = 0
         @playlist_tracks_has_more = false
         @playlist_tracks_loading = false
+        @playlist_tracks_loading_label = nil
+        @playlist_tracks_loading_started_at = nil
+        state.tracks_loading_more = false
+      end
+
+      def start_playlist_loading_status!(label)
+        @playlist_tracks_loading_label = label
+        @playlist_tracks_loading_started_at = Time.now
+      end
+
+      def finish_playlist_loading!
+        @playlist_tracks_loading = false
+        @playlist_tracks_loading_label = nil
+        @playlist_tracks_loading_started_at = nil
         state.tracks_loading_more = false
       end
 

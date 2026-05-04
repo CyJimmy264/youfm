@@ -451,6 +451,7 @@ module YouFM
         close_if_requested and return if @shutdown_requested
 
         if view_model.state.tracks_loading_more
+          view_model.refresh_playlist_loading_status
           @loader_frame_index = (@loader_frame_index + 1) % LOADER_FRAMES.length
           @render_queue.push(:render_tracks) if @render_queue.empty?
         end

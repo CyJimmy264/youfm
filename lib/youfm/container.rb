@@ -94,6 +94,12 @@ module YouFM
           lastfm_authenticator: fetch(:lastfm_authenticator)
         )
       end
+      register(:web_ui_server) do
+        Services::WebUiServer.new(
+          view_model: fetch(:main_view_model),
+          settings_store: fetch(:settings_store)
+        )
+      end
       register(:main_window) do
         Views::MainWindow.new(
           view_model: fetch(:main_view_model),

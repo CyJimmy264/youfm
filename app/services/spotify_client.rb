@@ -7,6 +7,7 @@ module YouFM
       class AuthenticationError < Error; end
       class PlaybackUnavailableError < Error; end
       class DeviceUnavailableError < Error; end
+      class TimeoutError < Error; end
       class RateLimitedError < Error
         attr_reader :retry_after_seconds
 
@@ -87,7 +88,16 @@ module YouFM
 
         puts "[youfm] spotify playlist page cache miss: playlist_id=#{playlist_id} snapshot_id=#{snapshot_id || 'none'} offset=#{offset} limit=#{limit}"
 
+        started_at = Time.now
         body = get("/playlists/#{playlist_id}/items", { limit: limit, offset: offset })
+        elapsed = Time.now - started_at
+        puts format(
+          '[youfm] spotify playlist page fetched: playlist_id=%<playlist_id>s offset=%<offset>s limit=%<limit>s elapsed=%<elapsed>.2fs',
+          playlist_id: playlist_id,
+          offset: offset,
+          limit: limit,
+          elapsed: elapsed
+        )
         tracks = Array(body['items']).filter_map do |item|
           track_payload = item['item'] || item['track']
           next unless track_payload.is_a?(Hash)
@@ -346,9 +356,17 @@ module YouFM
         request['Authorization'] = "Bearer #{token}"
         request['Content-Type'] = 'application/json'
 
-        Net::HTTP.start(request.uri.host, request.uri.port, use_ssl: request.uri.scheme == 'https') do |http|
+        Net::HTTP.start(
+          request.uri.host,
+          request.uri.port,
+          use_ssl: request.uri.scheme == 'https',
+          open_timeout: 5,
+          read_timeout: 10
+        ) do |http|
           http.request(request)
         end
+      rescue Net::OpenTimeout, Net::ReadTimeout
+        raise TimeoutError, 'Spotify request timed out'
       end
 
       def playback_error_for(code, body)

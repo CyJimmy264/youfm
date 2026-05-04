@@ -135,6 +135,28 @@ RSpec.describe YouFM::Services::SpotifyClient do
     end
   end
 
+  describe 'timeouts' do
+    it 'sets bounded HTTP timeouts and raises a Spotify timeout error' do
+      client = described_class.new(access_token: 'token', base_url: 'https://api.spotify.test/v1')
+      http = instance_double(Net::HTTP)
+
+      allow(http).to receive(:request).and_raise(Net::ReadTimeout)
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+
+      expect { client.available_devices }.to raise_error(
+        YouFM::Services::SpotifyClient::TimeoutError,
+        'Spotify request timed out'
+      )
+      expect(Net::HTTP).to have_received(:start).with(
+        'api.spotify.test',
+        443,
+        use_ssl: true,
+        open_timeout: 5,
+        read_timeout: 10
+      )
+    end
+  end
+
   describe '#available_devices' do
     it 'maps Spotify devices into device models' do
       client = described_class.new(access_token: 'token', base_url: 'https://api.spotify.test/v1')

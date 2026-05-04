@@ -35,6 +35,7 @@ RSpec.describe YouFM::Container do
     recommendation_coordinator = instance_double(YouFM::Services::RecommendationCoordinator)
     source = instance_double(YouFM::Services::MusicSources::SpotifySource)
     view_model = instance_double(YouFM::ViewModels::MainViewModel)
+    web_ui_server = instance_double(YouFM::Services::WebUiServer)
     main_window = instance_double(YouFM::Views::MainWindow)
 
     allow(YouFM::Styles::Theme).to receive(:new).with(name: 'dark').and_return(theme)
@@ -89,6 +90,10 @@ RSpec.describe YouFM::Container do
       recommendation_seed_store: recommendation_seed_store,
       lastfm_authenticator: lastfm_authenticator
     ).and_return(view_model)
+    allow(YouFM::Services::WebUiServer).to receive(:new).with(
+      view_model: view_model,
+      settings_store: settings_store
+    ).and_return(web_ui_server)
     allow(YouFM::Views::MainWindow).to receive(:new).with(
       view_model: view_model,
       theme: theme,
@@ -99,6 +104,7 @@ RSpec.describe YouFM::Container do
 
     expect(container.fetch(:theme)).to equal(theme)
     expect(container.fetch('theme')).to equal(theme)
+    expect(container.fetch(:web_ui_server)).to equal(web_ui_server)
     expect(container.fetch(:main_window)).to equal(main_window)
     expect(container.fetch(:main_window)).to equal(main_window)
     expect(YouFM::Views::MainWindow).to have_received(:new).once

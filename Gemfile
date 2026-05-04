@@ -4,6 +4,7 @@ source 'https://rubygems.org'
 
 gemspec
 gem 'qt', '~> 0.1.7'
+gem 'webrick', '~> 1.8'
 
 group :development, :test do
   gem 'bundler', '>= 2.4'

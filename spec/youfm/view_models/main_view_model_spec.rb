@@ -235,6 +235,50 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     expect(view_model.state.status_message).to eq('Loading tracks from Daily...')
   end
 
+  it 'calls playlist loaded callback after clearing the loading flag for async first page' do
+    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 10, snapshot_id: 'snap-1')
+    track = YouFM::Models::Track.new(
+      id: '1',
+      title: 'Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:1',
+      duration_ms: 1
+    )
+    callback_loading_states = []
+    allow(source).to receive(:cached_playlist_tracks).with(playlist, limit: 100).and_return(nil)
+    allow(source).to receive(:cached_playlist_tracks_page).with(playlist, limit: 100, offset: 0).and_return(nil)
+    allow(source).to receive(:playlist_tracks_page).with(playlist, limit: 100, offset: 0).and_return(
+      { tracks: [track], has_more: true }
+    )
+
+    view_model = build_view_model
+    view_model.state.playlists = [playlist]
+    view_model.select_playlist_index(0) { callback_loading_states << view_model.state.tracks_loading_more }
+
+    expect(callback_loading_states).to eq([true, false])
+    expect(view_model.state.search_results).to eq([track])
+  end
+
+  it 'updates playlist loading status with elapsed seconds while async loading is active' do
+    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 10, snapshot_id: 'snap-1')
+    callback = proc {}
+
+    allow(Thread).to receive(:new).and_return(instance_double(Thread))
+    allow(source).to receive(:cached_playlist_tracks).with(playlist, limit: 100).and_return(nil)
+    allow(source).to receive(:cached_playlist_tracks_page).with(playlist, limit: 100, offset: 0).and_return(nil)
+
+    now = Time.utc(2026, 5, 4, 10, 0, 0)
+    allow(Time).to receive(:now).and_return(now, now + 12)
+
+    view_model = build_view_model
+    view_model.state.playlists = [playlist]
+    view_model.select_playlist_index(0, &callback)
+    view_model.refresh_playlist_loading_status
+
+    expect(view_model.state.status_message).to eq('Loading tracks from Daily... 12s')
+  end
+
   it 'uses cached first playlist page immediately without waiting for a thread' do
     playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 10, snapshot_id: 'snap-1')
     track = YouFM::Models::Track.new(
@@ -248,6 +292,31 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     allow(source).to receive(:cached_playlist_tracks).with(playlist, limit: 100).and_return(nil)
     allow(source).to receive(:cached_playlist_tracks_page).with(playlist, limit: 100, offset: 0).and_return(
       { tracks: [track], has_more: false }
+    )
+    allow(Thread).to receive(:new)
+
+    view_model = build_view_model
+    view_model.state.playlists = [playlist]
+    view_model.select_playlist_index(0)
+
+    expect(view_model.state.search_results).to eq([track])
+    expect(view_model.state.tracks_loading_more).to be(false)
+    expect(Thread).not_to have_received(:new)
+  end
+
+  it 'does not keep the playlist loader visible after loading a first page with more pages' do
+    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me', tracks_total: 200, snapshot_id: 'snap-1')
+    track = YouFM::Models::Track.new(
+      id: '1',
+      title: 'Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:1',
+      duration_ms: 1
+    )
+    allow(source).to receive(:cached_playlist_tracks).with(playlist, limit: 100).and_return(nil)
+    allow(source).to receive(:cached_playlist_tracks_page).with(playlist, limit: 100, offset: 0).and_return(
+      { tracks: [track], has_more: true }
     )
     allow(Thread).to receive(:new)
 
