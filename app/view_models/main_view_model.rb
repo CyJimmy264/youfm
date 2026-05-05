@@ -349,7 +349,7 @@ module YouFM
         recommendation_coordinator.similar_artist_pool_limit
       end
 
-      def parse_similar_artist_pool_limit(value)
+      def apply_similar_artist_pool_limit(value)
         parsed = normalize_similar_artist_pool_limit(value)
         return nil unless parsed
 
@@ -358,7 +358,7 @@ module YouFM
       end
 
       def update_similar_artist_pool_limit(value)
-        parsed = parse_similar_artist_pool_limit(value)
+        parsed = apply_similar_artist_pool_limit(value)
         return update_status('Similar artist pool limit must be a positive integer') unless parsed
 
         update_status("Similar artist pool limit set to #{parsed}")

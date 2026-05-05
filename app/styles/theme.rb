@@ -41,14 +41,45 @@ module YouFM
             padding: 10px 16px;
           }
 
+          QPushButton:hover {
+            background: #334055;
+          }
+
+          QPushButton:pressed {
+            background: #1f2736;
+          }
+
+          QPushButton:disabled {
+            background: #1b1f27;
+            color: #6f7786;
+          }
+
           QPushButton#primary_button {
             background: #1db954;
             color: #08110b;
             font-weight: 700;
           }
 
+          QPushButton#primary_button:hover {
+            background: #24c95f;
+          }
+
+          QPushButton#primary_button:pressed {
+            background: #159043;
+          }
+
           QPushButton#ghost_button {
             background: #1b1f27;
+            border: 1px solid #2b3340;
+          }
+
+          QPushButton#ghost_button:hover {
+            background: #232a36;
+            border: 1px solid #3b4658;
+          }
+
+          QPushButton#ghost_button:pressed {
+            background: #171b22;
             border: 1px solid #2b3340;
           }
 
@@ -115,7 +146,27 @@ module YouFM
             background: #151922;
             border: 1px solid #232a36;
             border-radius: 10px;
-            padding: 8px 10px;
+            padding: 8px 34px 8px 10px;
+          }
+
+          QComboBox#device_picker::drop-down {
+            width: 24px;
+            border: none;
+            background: transparent;
+          }
+
+          QComboBox#device_picker::down-arrow {
+            image: url('/home/mveynberg/Code/Ruby/YouFM/app/styles/icons/combobox_arrow_dark.svg');
+            width: 10px;
+            height: 10px;
+          }
+
+          QComboBox#device_picker:hover {
+            border: 1px solid #32404f;
+          }
+
+          QComboBox#device_picker:focus {
+            border: 1px solid #49617a;
           }
 
           QListWidget#results_list::item {
@@ -166,15 +217,46 @@ module YouFM
             padding: 10px 16px;
           }
 
+          QPushButton:hover {
+            background: #e2d0b6;
+          }
+
+          QPushButton:pressed {
+            background: #c9af8b;
+          }
+
+          QPushButton:disabled {
+            background: #eae1d2;
+            color: #8f8576;
+          }
+
           QPushButton#primary_button {
             background: #1db954;
             color: #08110b;
             font-weight: 700;
           }
 
+          QPushButton#primary_button:hover {
+            background: #24c95f;
+          }
+
+          QPushButton#primary_button:pressed {
+            background: #159043;
+          }
+
           QPushButton#ghost_button {
             background: #fffdf8;
             border: 1px solid #d4c9b7;
+          }
+
+          QPushButton#ghost_button:hover {
+            background: #f6efe4;
+            border: 1px solid #c8b59e;
+          }
+
+          QPushButton#ghost_button:pressed {
+            background: #efe5d5;
+            border: 1px solid #b8a68a;
           }
 
           QScrollBar:vertical,
@@ -240,7 +322,27 @@ module YouFM
             background: #fffdf8;
             border: 1px solid #d4c9b7;
             border-radius: 10px;
-            padding: 8px 10px;
+            padding: 8px 34px 8px 10px;
+          }
+
+          QComboBox#device_picker::drop-down {
+            width: 24px;
+            border: none;
+            background: transparent;
+          }
+
+          QComboBox#device_picker::down-arrow {
+            image: url('/home/mveynberg/Code/Ruby/YouFM/app/styles/icons/combobox_arrow_light.svg');
+            width: 10px;
+            height: 10px;
+          }
+
+          QComboBox#device_picker:hover {
+            border: 1px solid #c5b093;
+          }
+
+          QComboBox#device_picker:focus {
+            border: 1px solid #b89d74;
           }
 
           QListWidget#results_list::item {

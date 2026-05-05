@@ -291,6 +291,7 @@ module YouFM
           button.object_name = object_name
           button.text = text
           button.focus_policy = Qt::NoFocus
+          button.cursor = Qt::PointingHandCursor
         end
       end
 
@@ -526,7 +527,7 @@ module YouFM
         saved_limit = settings_store.read_similar_artist_pool_limit
         return similar_artist_pool_limit_input.text = view_model.similar_artist_pool_limit.to_s if saved_limit.nil?
 
-        applied_limit = view_model.similar_artist_pool_limit = saved_limit
+        applied_limit = view_model.update_similar_artist_pool_limit(saved_limit.to_s)
         similar_artist_pool_limit_input.text = (applied_limit || view_model.similar_artist_pool_limit).to_s
       rescue StandardError => e
         warn("[youfm] load similar artist pool limit failed: #{e.class}: #{e.message}")

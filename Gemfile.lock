@@ -20,7 +20,7 @@ GEM
       ast (~> 2.4.1)
       racc
     prism (1.9.0)
-    qt (0.1.7)
+    qt (0.1.8)
       ffi (~> 1.17)
     racc (1.8.1)
     rainbow (3.1.1)
@@ -103,7 +103,7 @@ CHECKSUMS
   parallel (2.1.0) sha256=b35258865c2e31134c5ecb708beaaf6772adf9d5efae28e93e99260877b09356
   parser (3.3.11.1) sha256=d17ace7aabe3e72c3cc94043714be27cc6f852f104d81aa284c2281aecc65d54
   prism (1.9.0) sha256=7b530c6a9f92c24300014919c9dcbc055bf4cdf51ec30aed099b06cd6674ef85
-  qt (0.1.7) sha256=651a8b097646f821eb9876677ce92d2244216c763b565546c1c9ddbcd1325f7f
+  qt (0.1.8) sha256=3248717ae4208867ac8ae5274f1ffddb5c1f40415d097fed5af592977ddb6379
   racc (1.8.1) sha256=4a7f6929691dbec8b5209a0b373bc2614882b55fc5d2e447a21aaa691303d62f
   rainbow (3.1.1) sha256=039491aa3a89f42efa1d6dec2fc4e62ede96eb6acd95e52f1ad581182b79bc6a
   rake (13.3.1) sha256=8c9e89d09f66a26a01264e7e3480ec0607f0c497a861ef16063604b1b08eb19c
