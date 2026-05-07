@@ -189,11 +189,7 @@ module YouFM
       def refresh_queue
         return state.queue_tracks if queue_refresh_deferred?
 
-        @queue_mutex.synchronize do
-          state.queue_tracks = filtered_queue_tracks(source.queue)
-          retain_queue_recommendation_seeds!
-          normalize_selected_queue_index!
-        end
+        refresh_queue_tracks!
         @next_queue_refresh_at = nil
       rescue Services::SpotifyClient::RateLimitedError => e
         schedule_queue_refresh_retry(e.retry_after_seconds)
@@ -668,6 +664,14 @@ module YouFM
           else
             state.selected_queue_index
           end
+      end
+
+      def refresh_queue_tracks!
+        @queue_mutex.synchronize do
+          state.queue_tracks = filtered_queue_tracks(source.queue)
+          retain_queue_recommendation_seeds!
+          normalize_selected_queue_index!
+        end
       end
 
       def retain_queue_recommendation_seeds!

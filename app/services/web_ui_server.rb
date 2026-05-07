@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'cgi'
+require 'json'
 require 'webrick'
 
 module YouFM
@@ -13,9 +14,10 @@ module YouFM
         @settings_store = settings_store
         @port = port
         @mutex = Mutex.new
-        @action_in_flight = false
+        @action_queue = Queue.new
         @server = nil
         @thread = nil
+        @worker_thread = nil
       end
 
       def start
@@ -28,6 +30,7 @@ module YouFM
           Logger: WEBrick::Log.new($stderr, WEBrick::Log::WARN)
         )
         mount_routes
+        start_action_worker
         @thread = Thread.new { @server.start }
         puts "[youfm] web ui listening on http://127.0.0.1:#{port}"
       end
@@ -38,13 +41,14 @@ module YouFM
         @server.shutdown
         @thread&.join(2)
       ensure
+        stop_action_worker
         @server = nil
         @thread = nil
       end
 
       private
 
-      attr_reader :view_model, :settings_store, :port, :mutex, :server
+      attr_reader :view_model, :settings_store, :port, :mutex, :server, :action_queue
 
       def mount_routes
         server.mount_proc('/') { |request, response| handle_index(request, response) }
@@ -52,37 +56,69 @@ module YouFM
       end
 
       def handle_index(_request, response)
+        started_at = Time.now
         render_response(response)
+        log_request_timing('GET /', started_at)
       end
 
       def handle_action(request, response)
         return method_not_allowed(response) unless request.request_method == 'POST'
 
-        dispatch_action(request.query['name'].to_s, request.query.dup)
+        message = dispatch_action(request.query['name'].to_s, request.query.dup)
+        return render_action_response(response, message) if json_action_request?(request)
+
         redirect_home(response)
       rescue StandardError => e
-        mutex.synchronize { view_model.status = "Web UI action failed: #{e.message}" }
+        message = "Web UI action failed: #{e.message}"
+        mutex.synchronize { view_model.status = message }
+        return render_action_response(response, message, status: 500) if json_action_request?(request)
+
         redirect_home(response)
       end
 
       def dispatch_action(name, params)
-        mutex.synchronize do
-          if @action_in_flight
-            view_model.status = 'Web UI action skipped: another action is still running'
-            return
+        start_action_worker
+        pending_count = action_queue.size + 1
+        message = "Web UI action queued: #{action_label(name)}"
+        message = "#{message} (pending: #{pending_count})" if pending_count > 1
+        mutex.synchronize { view_model.status = message }
+        puts "[youfm] web ui action queued: #{action_label(name)} pending=#{pending_count} " \
+             "worker_alive=#{@worker_thread&.alive?}"
+        action_queue << [name, params]
+
+        message
+      end
+
+      def start_action_worker
+        return if @worker_thread&.alive?
+
+        @worker_thread = Thread.new do
+          loop do
+            action = action_queue.pop
+            break if action == :stop
+
+            run_queued_action(*action)
+          rescue StandardError => e
+            mutex.synchronize { view_model.status = "Web UI action failed: #{e.message}" }
           end
-
-          @action_in_flight = true
-          view_model.status = "Web UI action queued: #{action_label(name)}"
         end
+      end
 
-        Thread.new do
-          mutex.synchronize { run_action(name, params) }
-        rescue StandardError => e
-          mutex.synchronize { view_model.status = "Web UI action failed: #{e.message}" }
-        ensure
-          mutex.synchronize { @action_in_flight = false }
-        end
+      def stop_action_worker
+        return unless @worker_thread
+
+        action_queue << :stop
+        @worker_thread.join(2)
+      ensure
+        @worker_thread = nil
+      end
+
+      def run_queued_action(name, params)
+        label = action_label(name)
+        mutex.synchronize { view_model.status = "Web UI action started: #{label}" }
+        puts "[youfm] web ui action started: #{label}"
+        run_action(name, params)
+        puts "[youfm] web ui action finished: #{label}"
       end
 
       def run_action(name, params)
@@ -96,6 +132,9 @@ module YouFM
         when 'apply_pool'
           applied_limit = view_model.update_similar_artist_pool_limit(params['pool_limit'].to_s)
           settings_store.write_similar_artist_pool_limit(applied_limit) if applied_limit
+        when 'use_device'
+          view_model.select_device_index(params['device_index'].to_i)
+          view_model.activate_selected_device
         when 'refresh'
           view_model.refresh_playback
         when 'sync_library'
@@ -115,6 +154,8 @@ module YouFM
           'Generate Next'
         when 'apply_pool'
           'Apply Artist Pool'
+        when 'use_device'
+          'Use Device'
         when 'refresh'
           'Refresh'
         when 'sync_library'
@@ -127,13 +168,29 @@ module YouFM
       def render_response(response)
         response.status = 200
         response['Content-Type'] = 'text/html; charset=utf-8'
+        started_at = Time.now
         response.body = render_page
+        response.content_length = response.body.bytesize
+        response.keep_alive = false
+        log_request_timing('render_page', started_at)
       end
 
       def method_not_allowed(response)
         response.status = 405
         response['Allow'] = 'POST'
         response.body = 'Method Not Allowed'
+      end
+
+      def render_action_response(response, message, status: 202)
+        response.status = status
+        response['Content-Type'] = 'application/json; charset=utf-8'
+        response.body = JSON.generate(status: message)
+        response.content_length = response.body.bytesize
+        response.keep_alive = false
+      end
+
+      def json_action_request?(request)
+        Array(request.header['accept']).any? { |value| value.include?('application/json') }
       end
 
       def redirect_home(response)
@@ -182,7 +239,7 @@ module YouFM
               .status { display: grid; gap: 8px; margin-bottom: 22px; color: var(--muted); }
               .status strong { color: var(--text); font-weight: 650; }
               .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-              button, input {
+              button, input, select {
                 min-height: 44px;
                 border: 1px solid var(--line);
                 border-radius: 14px;
@@ -195,20 +252,21 @@ module YouFM
                 cursor: pointer;
               }
               button.primary { color: #1a1205; background: var(--accent); border-color: var(--accent); }
-              input {
-                width: 120px;
+              input, select {
                 padding: 0 12px;
                 color: var(--text);
                 background: #0f151d;
               }
+              input { width: 120px; }
+              select { min-width: min(360px, 100%); }
               form { margin: 0; }
-              .pool { display: flex; gap: 8px; align-items: center; }
-              .pool label { color: var(--muted); }
+              .pool, .device-form { display: flex; gap: 8px; align-items: center; }
+              .pool label, .device-form label { color: var(--muted); }
               @media (max-width: 640px) {
                 main { margin: 20px auto; }
                 .panel { padding: 18px; border-radius: 18px; }
-                .actions, .pool { align-items: stretch; flex-direction: column; }
-                button, input { width: 100%; }
+                .actions, .pool, .device-form { align-items: stretch; flex-direction: column; }
+                button, input, select { width: 100%; }
               }
             </style>
           </head>
@@ -217,12 +275,13 @@ module YouFM
               <h1>YouFM</h1>
               <section class="panel">
                 <div class="status">
-                  <div><strong>Now:</strong> #{escape(state.now_playing)}</div>
-                  <div><strong>Recommendation Seed:</strong> #{escape(state.recommendation_seed)}</div>
-                  <div><strong>Status:</strong> #{escape(state.status_message)}</div>
-                  <div><strong>Device:</strong> #{escape(state.device_name.to_s.empty? ? 'no active device' : state.device_name)}</div>
+                  <div><strong>Now:</strong> <span id="now_playing">#{escape(state.now_playing)}</span></div>
+                  <div><strong>Recommendation Seed:</strong> <span id="recommendation_seed">#{escape(state.recommendation_seed)}</span></div>
+                  <div><strong>Status:</strong> <span id="status_message">#{escape(state.status_message)}</span></div>
+                  <div><strong>Device:</strong> <span id="device_name">#{escape(state.device_name.to_s.empty? ? 'no active device' : state.device_name)}</span></div>
                 </div>
                 <div class="actions">
+                  #{device_form(state)}
                   #{action_form('toggle', 'Play/Pause', primary: true)}
                   #{action_form('next', 'Next')}
                   #{action_form('generate', 'Generate Next')}
@@ -237,8 +296,54 @@ module YouFM
                 </div>
               </section>
             </main>
+            <script>
+              document.querySelectorAll('form[action="/action"]').forEach((form) => {
+                form.addEventListener('submit', async (event) => {
+                  event.preventDefault();
+                  const submitter = event.submitter;
+                  if (submitter) submitter.disabled = true;
+
+                  try {
+                    const response = await fetch(form.action, {
+                      method: 'POST',
+                      headers: { 'Accept': 'application/json' },
+                      body: new FormData(form)
+                    });
+                    const payload = await response.json();
+                    const status = document.getElementById('status_message');
+                    if (status && payload.status) status.textContent = payload.status;
+                  } catch (error) {
+                    const status = document.getElementById('status_message');
+                    if (status) status.textContent = `Web UI request failed: ${error.message}`;
+                  } finally {
+                    if (submitter) submitter.disabled = false;
+                  }
+                });
+              });
+            </script>
           </body>
           </html>
+        HTML
+      end
+
+      def device_form(state)
+        devices = Array(state.devices)
+        selected_index = state.selected_device_index || devices.index(&:active) || 0
+        options = devices.each_with_index.map do |device, index|
+          selected = index == selected_index ? ' selected' : ''
+          label = "#{device.name} · #{device.type}"
+          label += ' · active' if device.active
+          %(<option value="#{index}"#{selected}>#{escape(label)}</option>)
+        end.join
+        disabled = devices.empty? ? ' disabled' : ''
+
+        <<~HTML
+          <form class="device-form" method="post" action="/action">
+            <input type="hidden" name="name" value="use_device">
+            <label for="device_index">Device</label>
+            <select id="device_index" name="device_index"#{disabled}>#{options}</select>
+            <button type="submit"#{disabled}>Use Device</button>
+          </form>
         HTML
       end
 
@@ -254,6 +359,13 @@ module YouFM
 
       def escape(value)
         CGI.escapeHTML(value.to_s)
+      end
+
+      def log_request_timing(label, started_at)
+        elapsed_ms = ((Time.now - started_at) * 1000).round
+        puts("[youfm] web ui #{label} finished in #{elapsed_ms}ms")
+      rescue StandardError
+        nil
       end
     end
   end

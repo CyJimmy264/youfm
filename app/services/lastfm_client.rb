@@ -14,6 +14,8 @@ module YouFM
       SIMILAR_ARTISTS_CACHE_TTL = 7 * 24 * 60 * 60
       SIMILAR_ARTISTS_API_LIMIT = 100
       LASTFM_WEB_BASE_URL = 'https://www.last.fm'
+      HTTP_OPEN_TIMEOUT = 5
+      HTTP_READ_TIMEOUT = 10
       WEB_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 ' \
                        '(KHTML, like Gecko) Chrome/123.0 Safari/537.36'
 
@@ -102,8 +104,21 @@ module YouFM
         params[:api_sig] = sign(params) if signed
 
         uri = build_uri(params)
-        response = Net::HTTP.get_response(uri)
+        response = perform_api_request(uri)
         handle_response(response)
+      end
+
+      def perform_api_request(uri)
+        request = Net::HTTP::Get.new(uri)
+        Net::HTTP.start(
+          uri.host,
+          uri.port,
+          use_ssl: uri.scheme == 'https',
+          open_timeout: HTTP_OPEN_TIMEOUT,
+          read_timeout: HTTP_READ_TIMEOUT
+        ) do |http|
+          http.request(request)
+        end
       end
 
       def sign(params)
@@ -197,7 +212,13 @@ module YouFM
         request['Accept'] = 'text/html,application/xhtml+xml'
         request['Accept-Language'] = 'en-US,en;q=0.9'
 
-        Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https') do |http|
+        Net::HTTP.start(
+          uri.host,
+          uri.port,
+          use_ssl: uri.scheme == 'https',
+          open_timeout: HTTP_OPEN_TIMEOUT,
+          read_timeout: HTTP_READ_TIMEOUT
+        ) do |http|
           http.request(request)
         end
       end

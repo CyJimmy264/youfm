@@ -31,11 +31,19 @@ RSpec.describe YouFM::Services::LastfmClient do
         body: JSON.dump('similarartists' => { 'artist' => [{ 'name' => 'Phoenix', 'match' => '0.8' }] })
       )
 
-      allow(Net::HTTP).to receive(:get_response).and_return(response)
+      http = instance_double(Net::HTTP, request: response)
+      allow(Net::HTTP).to receive(:start).and_yield(http)
 
       result = client.get_similar_artists('Air')
 
       expect(result.map(&:name)).to eq(['Phoenix'])
+      expect(Net::HTTP).to have_received(:start).with(
+        'ws.audioscrobbler.com',
+        80,
+        use_ssl: false,
+        open_timeout: 5,
+        read_timeout: 10
+      )
       expect(cache).to have_received(:save).with('Air', [{ 'name' => 'Phoenix', 'match' => '0.8' }])
     end
 

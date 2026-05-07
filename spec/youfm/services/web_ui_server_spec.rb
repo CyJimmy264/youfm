@@ -9,6 +9,11 @@ RSpec.describe YouFM::Services::WebUiServer do
       recommendation_seed: 'Seed — Artist (Взят из плейлиста: Daily)',
       status_message: 'Ready',
       device_name: 'Laptop',
+      devices: [
+        YouFM::Models::Device.new(id: 'd1', name: 'Laptop', type: 'Computer', active: true, restricted: false),
+        YouFM::Models::Device.new(id: 'd2', name: 'Phone', type: 'Smartphone', active: false, restricted: false)
+      ],
+      selected_device_index: 0,
       playing: true
     )
   end
@@ -21,6 +26,8 @@ RSpec.describe YouFM::Services::WebUiServer do
       skip_to_next: nil,
       generate_recommendation: nil,
       update_similar_artist_pool_limit: 300,
+      select_device_index: nil,
+      activate_selected_device: nil,
       refresh_playback: nil,
       refresh_library: nil,
       'status=': nil
@@ -32,13 +39,6 @@ RSpec.describe YouFM::Services::WebUiServer do
     described_class.new(view_model: view_model, settings_store: settings_store)
   end
 
-  before do
-    allow(Thread).to receive(:new).and_wrap_original do |_original, *args, &block|
-      block.call(*args)
-      instance_double(Thread)
-    end
-  end
-
   it 'renders playback controls and status' do
     html = build_server.send(:render_page)
 
@@ -48,6 +48,13 @@ RSpec.describe YouFM::Services::WebUiServer do
     expect(html).to include('Artist Pool')
     expect(html).to include('Sync Library')
     expect(html).to include('Playing: Track - Artist')
+  end
+
+  it 'renders device picker controls' do
+    html = build_server.send(:render_page)
+
+    expect(html).to include('Use Device')
+    expect(html).to include('Laptop · Computer · active')
   end
 
   it 'runs player actions through the view model' do
@@ -75,15 +82,74 @@ RSpec.describe YouFM::Services::WebUiServer do
     expect(settings_store).to have_received(:write_similar_artist_pool_limit).with(300)
   end
 
+  it 'selects and activates a device' do
+    server = build_server
+
+    server.send(:run_action, 'use_device', { 'device_index' => '1' })
+
+    expect(view_model).to have_received(:select_device_index).with(1)
+    expect(view_model).to have_received(:activate_selected_device)
+  end
+
   it 'redirects immediately after dispatching an action' do
-    request = instance_double(WEBrick::HTTPRequest, request_method: 'POST', query: { 'name' => 'refresh' })
+    request = instance_double(WEBrick::HTTPRequest, request_method: 'POST', query: { 'name' => 'refresh' }, header: {})
     response = WEBrick::HTTPResponse.new(WEBrick::Config::HTTP)
     server = build_server
+    allow(server).to receive(:start_action_worker)
 
     server.send(:handle_action, request, response)
 
     expect(response.status).to eq(303)
     expect(response['Location']).to eq('/')
-    expect(view_model).to have_received(:refresh_playback)
+    expect(server.send(:action_queue).size).to eq(1)
+  end
+
+  it 'responds to ajax actions without redirecting' do
+    request = instance_double(
+      WEBrick::HTTPRequest,
+      request_method: 'POST',
+      query: { 'name' => 'refresh' },
+      header: { 'accept' => ['application/json'] }
+    )
+    response = WEBrick::HTTPResponse.new(WEBrick::Config::HTTP)
+    server = build_server
+    allow(server).to receive(:start_action_worker)
+
+    server.send(:handle_action, request, response)
+
+    expect(response.status).to eq(202)
+    expect(response['Content-Type']).to eq('application/json; charset=utf-8')
+    expect(response.body).to include('Web UI action queued: Refresh')
+    expect(response['Location']).to be_nil
+  end
+
+  it 'processes queued actions with a worker' do
+    fake_view_model = Class.new do
+      attr_reader :state, :similar_artist_pool_limit, :refreshed, :statuses
+
+      def initialize(state)
+        @state = state
+        @similar_artist_pool_limit = 200
+        @refreshed = Queue.new
+        @statuses = Queue.new
+      end
+
+      def status=(message)
+        statuses << message
+      end
+
+      def refresh_playback
+        refreshed << true
+      end
+    end.new(state)
+    server = described_class.new(view_model: fake_view_model, settings_store: settings_store)
+
+    server.send(:dispatch_action, 'refresh', {})
+    server.send(:start_action_worker)
+
+    expect(fake_view_model.refreshed.pop(timeout: 1)).to be(true)
+    expect(fake_view_model.statuses.pop).to eq('Web UI action queued: Refresh')
+    expect(fake_view_model.statuses.pop).to eq('Web UI action started: Refresh')
+    server.send(:stop_action_worker)
   end
 end
