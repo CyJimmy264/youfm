@@ -89,4 +89,18 @@ RSpec.describe YouFM::Services::RecommendationCoordinator do
 
     expect(Thread).to have_received(:new).once
   end
+
+  it 'reports async recommendation failures through status updates' do
+    allow(Thread).to receive(:new).and_wrap_original do |_original, &block|
+      block.call
+      instance_double(Thread)
+    end
+    allow(generator).to receive(:generate_with_seed).and_raise(YouFM::Services::SpotifyClient::Error, 'Bad gateway.')
+
+    coordinator = build_coordinator
+    context = enqueue_context
+    coordinator.enqueue_async(**context.except(:updates, :appended))
+
+    expect(context[:updates]).to eq(['Recommendation failed: Bad gateway.'])
+  end
 end

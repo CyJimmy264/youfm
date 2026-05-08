@@ -57,6 +57,31 @@ RSpec.describe YouFM::Services::WebUiServer do
     expect(html).to include('Laptop · Computer · active')
   end
 
+  it 'renders an async recent log panel without reading log lines' do
+    allow(YouFM::Services::LogFile).to receive(:tail)
+    allow(YouFM::Services::LogFile).to receive(:path).and_return('/tmp/youfm.log')
+
+    html = build_server.send(:render_page)
+
+    expect(html).to include('Recent Log')
+    expect(html).to include('id="recent_log"')
+    expect(html).to include('/log')
+    expect(html).to include('/tmp/youfm.log')
+    expect(YouFM::Services::LogFile).not_to have_received(:tail)
+  end
+
+  it 'serves recent log lines as json' do
+    allow(YouFM::Services::LogFile).to receive(:tail).with(lines: 50).and_return(['line 1', 'line 2'])
+    allow(YouFM::Services::LogFile).to receive(:path).and_return('/tmp/youfm.log')
+    response = WEBrick::HTTPResponse.new(WEBrick::Config::HTTP)
+
+    build_server.send(:handle_log, response)
+
+    expect(response.status).to eq(200)
+    expect(response['Content-Type']).to eq('application/json; charset=utf-8')
+    expect(JSON.parse(response.body)).to eq('path' => '/tmp/youfm.log', 'lines' => ['line 1', 'line 2'])
+  end
+
   it 'runs player actions through the view model' do
     server = build_server
 

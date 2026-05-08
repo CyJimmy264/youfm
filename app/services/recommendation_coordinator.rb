@@ -56,6 +56,10 @@ module YouFM
         @in_flight = true
         Thread.new do
           enqueue(**kwargs)
+        rescue StandardError => e
+          message = "Recommendation failed: #{e.message}"
+          kwargs.fetch(:update_status).call(message)
+          warn "[youfm] recommendation failed: #{e.class}: #{e.message}"
         ensure
           @in_flight = false
         end
