@@ -10,11 +10,41 @@ RSpec.describe YouFM::Services::WebUiServer do
       recommendation_seed: 'Seed — Artist (Взят из плейлиста: Daily)',
       status_message: 'Ready',
       device_name: 'Laptop',
+      tracks_title: 'Playlist: Daily',
+      search_results: [
+        YouFM::Models::Track.new(
+          id: 't1',
+          title: 'Track',
+          artists: ['Artist'],
+          album: 'Album',
+          uri: 'spotify:track:t1',
+          duration_ms: 1
+        )
+      ],
       devices: [
         YouFM::Models::Device.new(id: 'd1', name: 'Laptop', type: 'Computer', active: true, restricted: false),
         YouFM::Models::Device.new(id: 'd2', name: 'Phone', type: 'Smartphone', active: false, restricted: false)
       ],
       selected_device_index: 0,
+      playlists: [
+        YouFM::Models::Playlist.new(
+          id: 'p1',
+          name: 'Daily',
+          uri: 'spotify:playlist:p1',
+          owner_name: 'Maksim',
+          tracks_total: 42,
+          snapshot_id: 's1'
+        ),
+        YouFM::Models::Playlist.new(
+          id: 'p2',
+          name: 'Night',
+          uri: 'spotify:playlist:p2',
+          owner_name: 'Maksim',
+          tracks_total: 7,
+          snapshot_id: 's2'
+        )
+      ],
+      selected_playlist_index: 0,
       playing: true
     )
   end
@@ -30,6 +60,7 @@ RSpec.describe YouFM::Services::WebUiServer do
       update_similar_artist_pool_limit: 300,
       select_device_index: nil,
       activate_selected_device: nil,
+      select_playlist_index: nil,
       refresh_playback: nil,
       refresh_library: nil,
       'status=': nil,
@@ -63,6 +94,14 @@ RSpec.describe YouFM::Services::WebUiServer do
 
     expect(html).to include('Use Device')
     expect(html).to include('Laptop · Computer · active')
+  end
+
+  it 'renders playlist seed controls' do
+    html = build_server.send(:render_page)
+
+    expect(html).to include('Seed Playlist')
+    expect(html).to include('Daily · Maksim · 42 tracks')
+    expect(html).to include('Playlist: Daily · 1 seed tracks')
   end
 
   it 'renders an async recent log panel without reading log lines' do
@@ -112,7 +151,14 @@ RSpec.describe YouFM::Services::WebUiServer do
       'recommendation_seed' => 'Seed — Artist (Взят из плейлиста: Daily)',
       'status_message' => 'Ready',
       'device_name' => 'Laptop',
+      'selected_playlist_index' => 0,
+      'tracks_title' => 'Playlist: Daily',
+      'seed_track_count' => 1,
       'revision' => 7
+    )
+    expect(JSON.parse(response.body).fetch('playlists')).to include(
+      'index' => 0,
+      'label' => 'Daily · Maksim · 42 tracks'
     )
   end
 
@@ -160,6 +206,14 @@ RSpec.describe YouFM::Services::WebUiServer do
 
     expect(view_model).to have_received(:select_device_index).with(1)
     expect(view_model).to have_received(:activate_selected_device)
+  end
+
+  it 'selects a seed playlist' do
+    server = build_server
+
+    server.send(:run_action, :select_playlist, { 'playlist_index' => '1' })
+
+    expect(view_model).to have_received(:select_playlist_index).with(1)
   end
 
   it 'redirects immediately after dispatching an action' do

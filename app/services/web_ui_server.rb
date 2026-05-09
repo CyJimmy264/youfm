@@ -17,6 +17,7 @@ module YouFM
         generate: 'Generate Next',
         apply_pool: 'Apply Artist Pool',
         use_device: 'Use Device',
+        select_playlist: 'Use Playlist',
         refresh: 'Refresh',
         sync_library: 'Sync Library'
       }.freeze
@@ -255,6 +256,7 @@ module YouFM
       def render_page
         state = log_render_step('state') { view_model.state }
         device_html = log_render_step('device_form') { device_form(state) }
+        playlist_html = log_render_step('playlist_form') { playlist_form(state) }
         pool_limit = log_render_step('similar_artist_pool_limit') { view_model.similar_artist_pool_limit }
 
         log_render_step('html') do
@@ -321,14 +323,22 @@ module YouFM
                 select { min-width: 0; width: 100%; }
                 form { margin: 0; }
                 .pool { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-                .device-form {
+                .device-form,
+                .playlist-form {
                   display: grid;
                   grid-template-columns: auto minmax(240px, 1fr) auto;
                   gap: 10px;
                   align-items: center;
                   width: 100%;
                 }
-                .pool label, .device-form label { color: var(--muted); }
+                .pool label,
+                .device-form label,
+                .playlist-form label { color: var(--muted); }
+                .form-summary {
+                  grid-column: 2 / -1;
+                  color: var(--muted);
+                  font-size: 13px;
+                }
                 .log-header { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
                 .log-title { margin: 0; font-size: 18px; font-weight: 650; }
                 .log-path { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
@@ -349,6 +359,8 @@ module YouFM
                   .panel { padding: 18px; border-radius: 18px; }
                   .button-row, .pool { align-items: stretch; flex-direction: column; }
                   .device-form { grid-template-columns: 1fr; }
+                  .playlist-form { grid-template-columns: 1fr; }
+                  .form-summary { grid-column: auto; }
                   .log-header { flex-direction: column; }
                   button, input, select { width: 100%; }
                 }
@@ -366,6 +378,7 @@ module YouFM
                   </div>
                   <div class="actions">
                     #{device_html}
+                    #{playlist_html}
                     <div class="button-row">
                       #{action_form('toggle', 'Play/Pause', primary: true)}
                       #{action_form('next', 'Next')}
@@ -406,6 +419,47 @@ module YouFM
                     const element = document.getElementById(id);
                     if (element) element.textContent = value;
                   });
+
+                  renderPlaylists(payload);
+                }
+
+                function renderPlaylists(payload) {
+                  const select = document.getElementById('playlist_index');
+                  const button = document.getElementById('use_playlist_button');
+                  const summary = document.getElementById('seed_playlist_summary');
+                  if (!select) return;
+
+                  const playlists = payload.playlists || [];
+                  const selectedIndex = String(payload.selected_playlist_index ?? 0);
+                  const previousValue = select.value;
+                  const userIsChoosing = document.activeElement === select;
+                  const playlistSignature = JSON.stringify(
+                    playlists.map((playlist) => [playlist.index, playlist.label])
+                  );
+                  if (select.dataset.playlistSignature !== playlistSignature) {
+                    select.replaceChildren(
+                      ...playlists.map((playlist) => {
+                        const option = document.createElement('option');
+                        option.value = playlist.index;
+                        option.textContent = playlist.label;
+                        return option;
+                      })
+                    );
+                    select.dataset.playlistSignature = playlistSignature;
+                  }
+                  const availableValues = playlists.map((playlist) => String(playlist.index));
+                  if (userIsChoosing && availableValues.includes(previousValue)) {
+                    select.value = previousValue;
+                  } else if (availableValues.includes(selectedIndex)) {
+                    select.value = selectedIndex;
+                  } else if (availableValues.includes(previousValue)) {
+                    select.value = previousValue;
+                  }
+                  select.disabled = playlists.length === 0;
+                  if (button) button.disabled = playlists.length === 0;
+                  if (summary) {
+                    summary.textContent = `${payload.tracks_title || 'Tracks'} · ${payload.seed_track_count || 0} seed tracks`;
+                  }
                 }
 
                 async function refreshLog() {
@@ -509,6 +563,27 @@ module YouFM
         HTML
       end
 
+      def playlist_form(state)
+        playlists = Array(state.playlists)
+        selected_index = state.selected_playlist_index || 0
+        options = playlists.each_with_index.map do |playlist, index|
+          selected = index == selected_index ? ' selected' : ''
+          %(<option value="#{index}"#{selected}>#{escape(playlist.display_label)}</option>)
+        end.join
+        disabled = playlists.empty? ? ' disabled' : ''
+        summary = "#{state.tracks_title || 'Tracks'} · #{Array(state.search_results).length} seed tracks"
+
+        <<~HTML
+          <form class="playlist-form" method="post" action="/action">
+            <input type="hidden" name="name" value="select_playlist">
+            <label for="playlist_index">Seed Playlist</label>
+            <select id="playlist_index" name="playlist_index"#{disabled}>#{options}</select>
+            <button id="use_playlist_button" type="submit"#{disabled}>Use Playlist</button>
+            <div id="seed_playlist_summary" class="form-summary">#{escape(summary)}</div>
+          </form>
+        HTML
+      end
+
       def action_form(name, label, primary: false)
         button_class = primary ? ' class="primary"' : ''
         <<~HTML
@@ -578,8 +653,18 @@ module YouFM
           recommendation_seed: state.recommendation_seed,
           status_message: state.status_message,
           device_name: state.device_name.to_s.empty? ? 'no active device' : state.device_name,
+          playlists: playlist_payload(state),
+          selected_playlist_index: state.selected_playlist_index,
+          tracks_title: state.tracks_title,
+          seed_track_count: Array(state.search_results).length,
           revision: view_model.revision
         }
+      end
+
+      def playlist_payload(state)
+        Array(state.playlists).each_with_index.map do |playlist, index|
+          { index: index, label: playlist.display_label }
+        end
       end
 
       def state_stream_body
@@ -637,6 +722,10 @@ module YouFM
       def use_device_action(params)
         view_model.select_device_index(params['device_index'].to_i)
         view_model.activate_selected_device
+      end
+
+      def select_playlist_action(params)
+        view_model.select_playlist_index(params['playlist_index'].to_i)
       end
 
       def refresh_action(_params)

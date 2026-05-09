@@ -175,7 +175,7 @@ module YouFM
         state.now_playing = playback.status_label
         state.playing = playback.playing
         playback_change_message = handle_playback_track_change(playback.track, previous_track_id:)
-        state.recommendation_seed = recommendation_seed_for_playback_track(playback.track)
+        state.recommendation_seed = recommendation_seed_for_playback_track(playback.track) unless playback.track
         sync_connection_state!
         return if playback_change_message == :recommendation_queued
 
@@ -614,6 +614,7 @@ module YouFM
         remember_playing_track(current_track_id)
         remember_now_playing_recommendation_seed(current_track_id)
         remove_track_from_local_queue(current_track_id)
+        state.recommendation_seed = recommendation_seed_for_playback_track(track)
         return unless track_changed?(current_track_id, previous_track_id)
         return if @last_recommendation_seed_track_id == current_track_id
 

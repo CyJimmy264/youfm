@@ -826,6 +826,10 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     view_model.state.search_results = [current_track]
     view_model.state.selected_index = 0
     view_model.play_selected
+    allow(recommendation_generator).to receive(:generate_with_seed) do
+      expect(view_model.state.recommendation_seed).to eq('Track — Artist (Взят из плейлиста: Tracks)')
+      nil
+    end
     view_model.refresh_playback
 
     expect(view_model.state.queue_tracks).to eq([])

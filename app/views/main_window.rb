@@ -24,11 +24,14 @@ module YouFM
         @render_queue = Queue.new
         @loader_frame_index = 0
         @idle_playback_polls = 0
+        @last_seen_state_revision = nil
+        @last_rendered_tracks_signature = nil
         build_window
         bind_events
         apply_saved_similar_artist_pool_limit
         view_model.bootstrap
         render_full
+        @last_seen_state_revision = view_model.revision
         force_active_playback_polling!
       end
 
@@ -467,6 +470,8 @@ module YouFM
       def on_ui_update
         close_if_requested and return if @shutdown_requested
 
+        enqueue_external_state_render
+
         if view_model.state.tracks_loading_more
           view_model.refresh_playlist_loading_status
           @loader_frame_index = (@loader_frame_index + 1) % LOADER_FRAMES.length
@@ -606,9 +611,34 @@ module YouFM
         results_list.add_item(loader_item_text) if state.tracks_loading_more
         results_list.current_row = state.selected_index if state.selected_index
         results_list.block_signals(false)
+        @last_rendered_tracks_signature = tracks_signature(state)
         return unless scrollbar && !previous_scroll_value.nil?
 
         scrollbar.value = [previous_scroll_value, scrollbar.maximum].min
+      end
+
+      def enqueue_external_state_render
+        revision = view_model.revision
+        return if revision == @last_seen_state_revision
+
+        @last_seen_state_revision = revision
+        if tracks_signature(view_model.state) == @last_rendered_tracks_signature
+          render_status
+        else
+          @render_queue.push(:render_tracks)
+        end
+      end
+
+      def tracks_signature(state)
+        tracks = state.search_results
+        [
+          state.tracks_title,
+          tracks.length,
+          tracks.first&.id,
+          tracks.last&.id,
+          state.selected_index,
+          state.tracks_loading_more
+        ]
       end
 
       def loader_item_text
