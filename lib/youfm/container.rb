@@ -25,12 +25,22 @@ module YouFM
     attr_reader :config, :providers, :memoized
 
     def register_defaults
+      register_basic_defaults
+      register_spotify_services
+      register_lastfm_services
+      register_ui_services
+    end
+
+    def register_basic_defaults
       register(:theme) { Styles::Theme.new(name: config.theme_name) }
       register(:settings_store) { Services::SettingsStore.new }
       register(:spotify_token_store) { Services::SpotifyTokenStore.new }
       register(:spotify_playlist_cache) { Services::SpotifyPlaylistCache.new }
       register(:recommendation_seed_store) { Services::RecommendationSeedStore.new }
       register(:browser_launcher) { Services::BrowserLauncher.new }
+    end
+
+    def register_spotify_services
       register(:spotify_authenticator) do
         Services::SpotifyAuthenticator.new(
           client_id: config.spotify_client_id,
@@ -53,6 +63,9 @@ module YouFM
       register(:music_source) do
         Services::MusicSources::SpotifySource.new(client: fetch(:spotify_client))
       end
+    end
+
+    def register_lastfm_services
       register(:lastfm_token_store) { Services::LastfmTokenStore.new }
       register(:lastfm_similar_artists_cache) { Services::LastfmSimilarArtistsCache.new }
       register(:lastfm_client) do
@@ -73,6 +86,9 @@ module YouFM
           browser_launcher: fetch(:browser_launcher)
         )
       end
+    end
+
+    def register_ui_services
       register(:recommendation_generator) do
         Services::RecommendationGenerator.new(
           lastfm_client: fetch(:lastfm_client),

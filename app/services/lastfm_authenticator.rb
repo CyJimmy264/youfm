@@ -22,13 +22,9 @@ module YouFM
       def connect!
         ensure_configured!
 
-        token_response = lastfm_client.auth_get_token
-        request_token = token_response.fetch('token')
-
+        request_token = request_auth_token
         browser_launcher.open(authorization_url(request_token:))
-
-        session_response = poll_for_session!(request_token)
-        token_store.save(session_response.fetch('session'))
+        token_store.save(poll_for_session!(request_token).fetch('session'))
       end
 
       def connected?
@@ -66,6 +62,10 @@ module YouFM
 
       def ensure_configured!
         raise Error, 'Set LASTFM_API_KEY and LASTFM_SECRET to use Last.fm OAuth' unless configured?
+      end
+
+      def request_auth_token
+        lastfm_client.auth_get_token.fetch('token')
       end
     end
   end

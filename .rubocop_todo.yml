@@ -32,7 +32,7 @@ Metrics/CyclomaticComplexity:
 # Offense count: 42
 # Configuration parameters: CountComments, CountAsOne, AllowedMethods, AllowedPatterns.
 Metrics/MethodLength:
-  Max: 39
+  Max: 30
 
 # Offense count: 7
 # Configuration parameters: AllowedMethods, AllowedPatterns.
@@ -51,4 +51,8 @@ RSpec/MultipleExpectations:
 # Offense count: 28
 # Configuration parameters: AllowedConstants.
 Style/Documentation:
+  Enabled: false
+
+# Remove the last
+Lint/RedundantCopDisableDirective:
   Enabled: false

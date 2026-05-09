@@ -367,33 +367,16 @@ module YouFM
 
       def load_more_playlist_tracks(&on_loaded)
         playlist = selected_playlist
-        return unless playlist
-        return unless @playlist_tracks_playlist_id == playlist.id
-        return unless @playlist_tracks_has_more
-        return if @playlist_tracks_loading
+        return unless can_load_more_playlist_tracks?(playlist)
 
-        cached_page = source.cached_playlist_tracks_page(playlist, limit: PLAYLIST_PAGE_SIZE,
-                                                                   offset: @playlist_tracks_offset)
-        if cached_page
-          append_playlist_tracks_page(playlist, cached_page)
+        cached_playlist_tracks_page = cached_playlist_tracks_page_for(playlist)
+        if cached_playlist_tracks_page
+          append_playlist_tracks_page(playlist, cached_playlist_tracks_page)
           on_loaded&.call
           return
         end
 
-        @playlist_tracks_loading = true
-        start_playlist_loading_status!("Loading more tracks from #{playlist.name}")
-        state.tracks_loading_more = true
-        Thread.new do
-          page = source.playlist_tracks_page(playlist, limit: PLAYLIST_PAGE_SIZE, offset: @playlist_tracks_offset)
-          append_playlist_tracks_page(playlist, page)
-        rescue Services::SpotifyClient::AuthenticationError
-          update_status('Connect Spotify first')
-        rescue StandardError => e
-          update_status("Playlist tracks failed: #{friendly_error_message(e)}")
-        ensure
-          finish_playlist_loading!
-          on_loaded&.call
-        end
+        load_more_playlist_tracks_async(playlist, on_loaded)
       end
 
       def refresh_playlist_loading_status
@@ -731,6 +714,38 @@ module YouFM
         state.tracks_loading_more = false
         on_loaded&.call
         true
+      end
+
+      def can_load_more_playlist_tracks?(playlist)
+        playlist &&
+          @playlist_tracks_playlist_id == playlist.id &&
+          @playlist_tracks_has_more &&
+          !@playlist_tracks_loading
+      end
+
+      def cached_playlist_tracks_page_for(playlist)
+        source.cached_playlist_tracks_page(
+          playlist,
+          limit: PLAYLIST_PAGE_SIZE,
+          offset: @playlist_tracks_offset
+        )
+      end
+
+      def load_more_playlist_tracks_async(playlist, on_loaded)
+        @playlist_tracks_loading = true
+        start_playlist_loading_status!("Loading more tracks from #{playlist.name}")
+        state.tracks_loading_more = true
+        Thread.new do
+          page = source.playlist_tracks_page(playlist, limit: PLAYLIST_PAGE_SIZE, offset: @playlist_tracks_offset)
+          append_playlist_tracks_page(playlist, page)
+        rescue Services::SpotifyClient::AuthenticationError
+          update_status('Connect Spotify first')
+        rescue StandardError => e
+          update_status("Playlist tracks failed: #{friendly_error_message(e)}")
+        ensure
+          finish_playlist_loading!
+          on_loaded&.call
+        end
       end
 
       def start_playlist_tracks_async(playlist, on_loaded, loading_message:)

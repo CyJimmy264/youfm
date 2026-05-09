@@ -56,10 +56,7 @@ module YouFM
         state = SecureRandom.hex(24)
         verifier = generate_code_verifier
         callback = capture_callback!(state:, verifier:)
-        exchange_code!(
-          code: callback.fetch(:code),
-          verifier: verifier
-        )
+        exchange_code!(code: callback.fetch(:code), verifier:)
       end
 
       def refresh!(refresh_token)
@@ -82,20 +79,10 @@ module YouFM
 
       def capture_callback!(state:, verifier:)
         redirect = URI.parse(redirect_uri)
-        server = TCPServer.new(redirect.host, redirect.port)
+        server = callback_server(redirect)
         browser_launcher.open(authorization_url(state:, verifier:))
 
-        Timeout.timeout(timeout_seconds) do
-          loop do
-            socket = server.accept
-            result = read_callback_request(socket, redirect.path, state)
-            next unless result
-
-            return result
-          ensure
-            socket&.close
-          end
-        end
+        wait_for_callback(server, redirect.path, state)
       rescue Timeout::Error
         raise CallbackTimeoutError, 'Timed out waiting for Spotify authorization callback'
       ensure
@@ -191,6 +178,24 @@ module YouFM
 
       def ensure_configured!
         raise Error, 'Set SPOTIFY_CLIENT_ID and SPOTIFY_REDIRECT_URI to use Spotify OAuth' unless configured?
+      end
+
+      def callback_server(redirect)
+        TCPServer.new(redirect.host, redirect.port)
+      end
+
+      def wait_for_callback(server, expected_path, expected_state)
+        Timeout.timeout(timeout_seconds) do
+          loop do
+            socket = server.accept
+            result = read_callback_request(socket, expected_path, expected_state)
+            next unless result
+
+            return result
+          ensure
+            socket&.close
+          end
+        end
       end
     end
   end
