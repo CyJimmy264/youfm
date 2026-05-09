@@ -3,15 +3,9 @@
 module YouFM
   module Models
     class Device
-      attr_reader :id, :name, :type, :active, :restricted
+      extend Props
 
-      def initialize(id:, name:, type:, active:, restricted:)
-        @id = id
-        @name = name
-        @type = type
-        @active = active
-        @restricted = restricted
-      end
+      props :id, :name, :type, :active, :restricted
 
       def display_label
         parts = [name, type]

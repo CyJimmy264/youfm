@@ -12,6 +12,7 @@ require 'uri'
 require 'yaml'
 require 'zeitwerk'
 
+require_relative 'props'
 require_relative 'youfm/version'
 require_relative 'youfm/configuration'
 require_relative 'youfm/container'

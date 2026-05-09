@@ -11,6 +11,15 @@ module YouFM
   module Services
     class WebUiServer
       DEFAULT_PORT = 8264
+      ACTION_LABELS = {
+        toggle: 'Play/Pause',
+        next: 'Next',
+        generate: 'Generate Next',
+        apply_pool: 'Apply Artist Pool',
+        use_device: 'Use Device',
+        refresh: 'Refresh',
+        sync_library: 'Sync Library'
+      }.freeze
 
       def initialize(view_model:, settings_store:, port: DEFAULT_PORT)
         @view_model = view_model
@@ -125,16 +134,17 @@ module YouFM
       end
 
       def dispatch_action(name, params)
+        action = normalize_action_name(name)
         start_action_worker
         pending_count = action_queue.size + 1
-        message = "Web UI action queued: #{action_label(name)}"
+        message = "Web UI action queued: #{action_label(action)}"
         message = "#{message} (pending: #{pending_count})" if pending_count > 1
         mutex.synchronize { view_model.status = message }
         Services::Logger.info(
-          "[youfm] web ui action queued: #{action_label(name)} pending=#{pending_count} " \
+          "[youfm] web ui action queued: #{action_label(action)} pending=#{pending_count} " \
           "worker_alive=#{@worker_thread&.alive?}"
         )
-        action_queue << [name, params]
+        action_queue << [action, params]
 
         message
       end
@@ -172,47 +182,13 @@ module YouFM
       end
 
       def run_action(name, params)
-        case name
-        when 'toggle'
-          view_model.toggle_playback
-        when 'next'
-          view_model.skip_to_next
-        when 'generate'
-          view_model.generate_recommendation
-        when 'apply_pool'
-          applied_limit = view_model.update_similar_artist_pool_limit(params['pool_limit'].to_s)
-          settings_store.write_similar_artist_pool_limit(applied_limit) if applied_limit
-        when 'use_device'
-          view_model.select_device_index(params['device_index'].to_i)
-          view_model.activate_selected_device
-        when 'refresh'
-          view_model.refresh_playback
-        when 'sync_library'
-          view_model.refresh_library
-        else
-          view_model.status = 'Unknown Web UI action'
-        end
+        send("#{normalize_action_name(name)}_action", params)
+      rescue NoMethodError
+        unknown_action
       end
 
       def action_label(name)
-        case name
-        when 'toggle'
-          'Play/Pause'
-        when 'next'
-          'Next'
-        when 'generate'
-          'Generate Next'
-        when 'apply_pool'
-          'Apply Artist Pool'
-        when 'use_device'
-          'Use Device'
-        when 'refresh'
-          'Refresh'
-        when 'sync_library'
-          'Sync Library'
-        else
-          'Unknown'
-        end
+        ACTION_LABELS.fetch(name, 'Unknown')
       end
 
       def render_response
@@ -556,6 +532,44 @@ module YouFM
         )
       rescue StandardError
         nil
+      end
+
+      def toggle_action(_params)
+        view_model.toggle_playback
+      end
+
+      def next_action(_params)
+        view_model.skip_to_next
+      end
+
+      def generate_action(_params)
+        view_model.generate_recommendation
+      end
+
+      def apply_pool_action(params)
+        applied_limit = view_model.update_similar_artist_pool_limit(params['pool_limit'].to_s)
+        settings_store.write_similar_artist_pool_limit(applied_limit) if applied_limit
+      end
+
+      def use_device_action(params)
+        view_model.select_device_index(params['device_index'].to_i)
+        view_model.activate_selected_device
+      end
+
+      def refresh_action(_params)
+        view_model.refresh_playback
+      end
+
+      def sync_library_action(_params)
+        view_model.refresh_library
+      end
+
+      def unknown_action
+        view_model.status = 'Unknown Web UI action'
+      end
+
+      def normalize_action_name(name)
+        name.to_s.tr('-', '_').to_sym
       end
 
       def elapsed_ms_since(started_at)

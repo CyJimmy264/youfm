@@ -3,14 +3,9 @@
 module YouFM
   module Models
     class PlaybackState
-      attr_reader :device_name, :track, :playing, :progress_ms
+      extend Props
 
-      def initialize(device_name:, track:, playing:, progress_ms:)
-        @device_name = device_name
-        @track = track
-        @playing = playing
-        @progress_ms = progress_ms
-      end
+      props :device_name, :track, :playing, :progress_ms
 
       def status_label
         return 'No active playback' unless track

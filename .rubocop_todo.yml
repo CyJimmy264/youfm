@@ -34,11 +34,6 @@ Metrics/CyclomaticComplexity:
 Metrics/MethodLength:
   Max: 39
 
-# Offense count: 6
-# Configuration parameters: CountKeywordArgs, MaxOptionalParameters.
-Metrics/ParameterLists:
-  Max: 7
-
 # Offense count: 7
 # Configuration parameters: AllowedMethods, AllowedPatterns.
 Metrics/PerceivedComplexity:

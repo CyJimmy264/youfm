@@ -103,11 +103,11 @@ RSpec.describe YouFM::Services::WebUiServer do
   it 'runs player actions through the view model' do
     server = build_server
 
-    server.send(:run_action, 'toggle', {})
-    server.send(:run_action, 'next', {})
-    server.send(:run_action, 'generate', {})
-    server.send(:run_action, 'refresh', {})
-    server.send(:run_action, 'sync_library', {})
+    server.send(:run_action, :toggle, {})
+    server.send(:run_action, :next, {})
+    server.send(:run_action, :generate, {})
+    server.send(:run_action, :refresh, {})
+    server.send(:run_action, :sync_library, {})
 
     expect(view_model).to have_received(:toggle_playback)
     expect(view_model).to have_received(:skip_to_next)
@@ -119,7 +119,7 @@ RSpec.describe YouFM::Services::WebUiServer do
   it 'applies and persists artist pool limit' do
     server = build_server
 
-    server.send(:run_action, 'apply_pool', { 'pool_limit' => '300' })
+    server.send(:run_action, :apply_pool, { 'pool_limit' => '300' })
 
     expect(view_model).to have_received(:update_similar_artist_pool_limit).with('300')
     expect(settings_store).to have_received(:write_similar_artist_pool_limit).with(300)
@@ -128,7 +128,7 @@ RSpec.describe YouFM::Services::WebUiServer do
   it 'selects and activates a device' do
     server = build_server
 
-    server.send(:run_action, 'use_device', { 'device_index' => '1' })
+    server.send(:run_action, :use_device, { 'device_index' => '1' })
 
     expect(view_model).to have_received(:select_device_index).with(1)
     expect(view_model).to have_received(:activate_selected_device)

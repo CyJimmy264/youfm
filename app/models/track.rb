@@ -3,16 +3,9 @@
 module YouFM
   module Models
     class Track
-      attr_reader :id, :title, :artists, :album, :uri, :duration_ms
+      extend Props
 
-      def initialize(id:, title:, artists:, album:, uri:, duration_ms:)
-        @id = id
-        @title = title
-        @artists = artists
-        @album = album
-        @uri = uri
-        @duration_ms = duration_ms
-      end
+      props :id, :title, :artists, :album, :uri, :duration_ms
 
       def artist_line
         artists.join(', ')
