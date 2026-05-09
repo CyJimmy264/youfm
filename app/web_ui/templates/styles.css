@@ -1,0 +1,115 @@
+:root {
+  --bg: #11151c;
+  --panel: #19212c;
+  --text: #edf2f7;
+  --muted: #9aa7b4;
+  --line: #2a3442;
+  --accent: #f0b35a;
+  --button: #243040;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font: 16px/1.45 "Iosevka Aile", "Aptos", sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top left, rgba(240, 179, 90, 0.18), transparent 34rem),
+    linear-gradient(135deg, #0e1218, var(--bg));
+}
+
+main { width: min(880px, calc(100vw - 32px)); margin: 40px auto; }
+h1 { margin: 0 0 20px; font-size: clamp(32px, 8vw, 64px); letter-spacing: -0.06em; }
+
+.panel {
+  margin-bottom: 18px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--panel), transparent 8%);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+}
+
+.status { display: grid; gap: 8px; margin-bottom: 22px; color: var(--muted); }
+.status strong { color: var(--text); font-weight: 650; }
+.actions { display: grid; gap: 14px; }
+.button-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+
+button,
+input,
+select {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  font: inherit;
+}
+
+button {
+  padding: 0 18px;
+  color: var(--text);
+  background: var(--button);
+  cursor: pointer;
+}
+
+button.primary { color: #1a1205; background: var(--accent); border-color: var(--accent); }
+
+input,
+select {
+  padding: 0 12px;
+  color: var(--text);
+  background: #0f151d;
+}
+
+input { width: 120px; }
+select { min-width: 0; width: 100%; }
+form { margin: 0; }
+.pool { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+.device-form,
+.playlist-form {
+  display: grid;
+  grid-template-columns: auto minmax(240px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+}
+
+.pool label,
+.device-form label,
+.playlist-form label { color: var(--muted); }
+
+.form-summary {
+  grid-column: 2 / -1;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.log-header { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.log-title { margin: 0; font-size: 18px; font-weight: 650; }
+.log-path { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+
+.log-lines {
+  max-height: 420px;
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: #d7e2ec;
+  background: #0a0f15;
+  font: 13px/1.5 "Iosevka Term", "JetBrains Mono", monospace;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 640px) {
+  main { margin: 20px auto; }
+  .panel { padding: 18px; border-radius: 18px; }
+  .button-row, .pool { align-items: stretch; flex-direction: column; }
+  .device-form { grid-template-columns: 1fr; }
+  .playlist-form { grid-template-columns: 1fr; }
+  .form-summary { grid-column: auto; }
+  .log-header { flex-direction: column; }
+  button, input, select { width: 100%; }
+}

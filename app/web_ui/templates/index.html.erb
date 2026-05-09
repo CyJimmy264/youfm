@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>YouFM Web UI</title>
+  <style><%= stylesheet %></style>
+</head>
+<body>
+  <main>
+    <h1>YouFM</h1>
+    <section class="panel">
+      <div class="status">
+        <div><strong>Now:</strong> <span id="now_playing"><%= escape(state.now_playing) %></span></div>
+        <div><strong>Recommendation Seed:</strong> <span id="recommendation_seed"><%= escape(state.recommendation_seed) %></span></div>
+        <div><strong>Status:</strong> <span id="status_message"><%= escape(state.status_message) %></span></div>
+        <div><strong>Device:</strong> <span id="device_name"><%= escape(state.device_name.to_s.empty? ? 'no active device' : state.device_name) %></span></div>
+      </div>
+      <div class="actions">
+        <%= device_form %>
+        <%= playlist_form %>
+        <div class="button-row">
+          <%= action_form('toggle', 'Play/Pause', primary: true) %>
+          <%= action_form('next', 'Next') %>
+          <%= action_form('generate', 'Generate Next') %>
+          <%= action_form('refresh', 'Refresh') %>
+          <%= action_form('sync_library', 'Sync Library') %>
+        </div>
+        <form class="pool" method="post" action="/action">
+          <input type="hidden" name="name" value="apply_pool">
+          <label for="pool_limit">Artist Pool</label>
+          <input id="pool_limit" name="pool_limit" value="<%= escape(pool_limit) %>">
+          <button type="submit">Apply</button>
+        </form>
+      </div>
+    </section>
+    <%= recent_log_panel %>
+  </main>
+  <script><%= javascript %></script>
+</body>
+</html>
