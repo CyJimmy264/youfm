@@ -90,6 +90,19 @@ RSpec.describe YouFM::Services::RecommendationCoordinator do
     expect(Thread).to have_received(:new).once
   end
 
+  it 'skips synchronous recommendations while an async recommendation is running' do
+    allow(Thread).to receive(:new).and_return(instance_double(Thread))
+    allow(generator).to receive(:generate_with_seed)
+
+    coordinator = build_coordinator
+    context = enqueue_context
+    coordinator.enqueue_async(**context.except(:updates, :appended))
+    result = coordinator.enqueue(**context.except(:updates, :appended))
+
+    expect(result).to eq('Recommendation skipped: another recommendation is already running')
+    expect(generator).not_to have_received(:generate_with_seed)
+  end
+
   it 'reports async recommendation failures through status updates' do
     allow(Thread).to receive(:new).and_wrap_original do |_original, &block|
       block.call

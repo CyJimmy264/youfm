@@ -248,8 +248,15 @@ module YouFM
       end
 
       def normalize_lines(message)
-        lines = message.to_s.lines(chomp: true).flat_map { |line| line.split(TIMESTAMP_SPLIT_PATTERN) }
+        lines = utf8_text(message).lines(chomp: true).flat_map { |line| line.split(TIMESTAMP_SPLIT_PATTERN) }
         lines.map(&:strip).reject { |line| line.empty? || TIMESTAMP_ONLY_PATTERN.match?(line) }
+      end
+
+      def utf8_text(message)
+        text = message.to_s.dup.force_encoding(Encoding::UTF_8)
+        return text if text.valid_encoding?
+
+        text.encode(Encoding::UTF_8, invalid: :replace, undef: :replace, replace: '')
       end
 
       def normalized_message(message)

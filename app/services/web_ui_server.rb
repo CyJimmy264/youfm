@@ -39,7 +39,7 @@ module YouFM
           self,
           nil,
           min_threads: 0,
-          max_threads: 4,
+          max_threads: 16,
           persistent_timeout: 0,
           enable_keep_alives: false,
           log_writer: Puma::LogWriter.null
@@ -78,6 +78,10 @@ module YouFM
           handle_log
         when '/log/stream'
           handle_log_stream
+        when '/state'
+          handle_state
+        when '/state/stream'
+          handle_state_stream
         else
           not_found
         end
@@ -130,6 +134,23 @@ module YouFM
             'X-Accel-Buffering' => 'no'
           },
           log_stream_body
+        ]
+      end
+
+      def handle_state
+        json_response(JSON.generate(state_payload), { 'Cache-Control' => 'no-store' })
+      end
+
+      def handle_state_stream
+        [
+          200,
+          {
+            'Content-Type' => 'text/event-stream; charset=utf-8',
+            'Cache-Control' => 'no-store',
+            'Connection' => 'keep-alive',
+            'X-Accel-Buffering' => 'no'
+          },
+          state_stream_body
         ]
       end
 
@@ -373,6 +394,20 @@ module YouFM
                   log.scrollTop = log.scrollHeight;
                 }
 
+                function renderState(payload) {
+                  const fields = {
+                    now_playing: payload.now_playing,
+                    recommendation_seed: payload.recommendation_seed,
+                    status_message: payload.status_message,
+                    device_name: payload.device_name
+                  };
+
+                  Object.entries(fields).forEach(([id, value]) => {
+                    const element = document.getElementById(id);
+                    if (element) element.textContent = value;
+                  });
+                }
+
                 async function refreshLog() {
                   try {
                     const response = await fetch('/log', { headers: { 'Accept': 'application/json' } });
@@ -383,15 +418,31 @@ module YouFM
                   }
                 }
 
+                async function refreshState() {
+                  try {
+                    const response = await fetch('/state', { headers: { 'Accept': 'application/json' } });
+                    renderState(await response.json());
+                  } catch (error) {}
+                }
+
                 if (window.EventSource) {
                   const logEvents = new EventSource('/log/stream');
+                  const stateEvents = new EventSource('/state/stream');
                   logEvents.addEventListener('log', (event) => renderLog(JSON.parse(event.data)));
+                  stateEvents.addEventListener('state', (event) => renderState(JSON.parse(event.data)));
                   logEvents.onerror = () => {
                     if (document.getElementById('recent_log')?.textContent === 'Loading log...') refreshLog();
                   };
+                  stateEvents.onerror = () => refreshState();
+                  window.addEventListener('beforeunload', () => {
+                    logEvents.close();
+                    stateEvents.close();
+                  });
                 } else {
                   refreshLog();
+                  refreshState();
                   setInterval(refreshLog, 1000);
+                  setInterval(refreshState, 1000);
                 }
 
                 document.querySelectorAll('form[action="/action"]').forEach((form) => {
@@ -520,6 +571,38 @@ module YouFM
         end
       end
 
+      def state_payload
+        state = view_model.state
+        {
+          now_playing: state.now_playing,
+          recommendation_seed: state.recommendation_seed,
+          status_message: state.status_message,
+          device_name: state.device_name.to_s.empty? ? 'no active device' : state.device_name,
+          revision: view_model.revision
+        }
+      end
+
+      def state_stream_body
+        Enumerator.new do |stream|
+          payload = state_payload
+          stream << sse_event('state', payload)
+          revision = payload.fetch(:revision)
+
+          loop do
+            next_revision = view_model.wait_for_revision(revision, timeout: 15)
+            if next_revision > revision
+              payload = state_payload
+              stream << sse_event('state', payload)
+              revision = payload.fetch(:revision)
+            else
+              stream << ": heartbeat\n\n"
+            end
+          end
+        rescue IOError, Errno::EPIPE
+          nil
+        end
+      end
+
       def sse_event(event, payload)
         "event: #{event}\ndata: #{JSON.generate(payload)}\n\n"
       end
@@ -543,7 +626,7 @@ module YouFM
       end
 
       def generate_action(_params)
-        view_model.generate_recommendation
+        view_model.generate_recommendation_async
       end
 
       def apply_pool_action(params)

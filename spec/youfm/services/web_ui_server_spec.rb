@@ -26,12 +26,15 @@ RSpec.describe YouFM::Services::WebUiServer do
       toggle_playback: nil,
       skip_to_next: nil,
       generate_recommendation: nil,
+      generate_recommendation_async: nil,
       update_similar_artist_pool_limit: 300,
       select_device_index: nil,
       activate_selected_device: nil,
       refresh_playback: nil,
       refresh_library: nil,
-      'status=': nil
+      'status=': nil,
+      revision: 7,
+      wait_for_revision: 7
     )
   end
   let(:settings_store) { instance_double(YouFM::Services::SettingsStore, write_similar_artist_pool_limit: nil) }
@@ -100,6 +103,31 @@ RSpec.describe YouFM::Services::WebUiServer do
     expect(event).to end_with("\n\n")
   end
 
+  it 'serves current state as json' do
+    response = rack_request.get('/state')
+
+    expect(response.status).to eq(200)
+    expect(JSON.parse(response.body)).to include(
+      'now_playing' => 'Playing: Track - Artist',
+      'recommendation_seed' => 'Seed — Artist (Взят из плейлиста: Daily)',
+      'status_message' => 'Ready',
+      'device_name' => 'Laptop',
+      'revision' => 7
+    )
+  end
+
+  it 'serves current state as an event stream' do
+    status, headers, body = build_server.call(Rack::MockRequest.env_for('/state/stream'))
+
+    expect(status).to eq(200)
+    expect(headers['Content-Type']).to eq('text/event-stream; charset=utf-8')
+    event = body.next
+    expect(event).to start_with("event: state\ndata: ")
+    expect(event).to include('"now_playing":"Playing: Track - Artist"')
+    expect(event).to include('"status_message":"Ready"')
+    expect(event).to end_with("\n\n")
+  end
+
   it 'runs player actions through the view model' do
     server = build_server
 
@@ -111,7 +139,7 @@ RSpec.describe YouFM::Services::WebUiServer do
 
     expect(view_model).to have_received(:toggle_playback)
     expect(view_model).to have_received(:skip_to_next)
-    expect(view_model).to have_received(:generate_recommendation)
+    expect(view_model).to have_received(:generate_recommendation_async)
     expect(view_model).to have_received(:refresh_playback)
     expect(view_model).to have_received(:refresh_library)
   end

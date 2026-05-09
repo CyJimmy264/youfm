@@ -127,12 +127,16 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
 
   it 'logs status changes to stdout' do
     view_model = build_view_model
+    initial_revision = view_model.revision
 
     expect { view_model.status = 'Visible status' }.to output(
       /\A\[\d{4}-\d{2}-\d{2}T[^\]]+\] \[youfm\] status: Visible status\n\z/
     ).to_stdout
+    changed_revision = view_model.revision
     expect { view_model.status = 'Visible status' }.not_to output.to_stdout
     expect(view_model.state.status_message).to eq('Visible status')
+    expect(changed_revision).to be > initial_revision
+    expect(view_model.revision).to be > changed_revision
   end
 
   it 'connects Spotify and refreshes device and playlist state' do
@@ -608,6 +612,39 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     view_model.state.search_results = [current_track]
 
     view_model.generate_recommendation
+
+    expect(source).to have_received(:add_to_queue).with(recommended_track)
+    expect(view_model.state.queue_tracks).to include(recommended_track)
+    expect(view_model.state.status_message).to include('Added recommendation to Spotify queue')
+  end
+
+  it 'can schedule a generated recommendation asynchronously' do
+    current_track = YouFM::Models::Track.new(
+      id: '1',
+      title: 'Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:1',
+      duration_ms: 1
+    )
+    recommended_track = YouFM::Models::Track.new(
+      id: '2',
+      title: 'Recommended',
+      artists: ['Another Artist'],
+      album: 'Album 2',
+      uri: 'spotify:track:2',
+      duration_ms: 1
+    )
+
+    allow(source).to receive(:add_to_queue).with(recommended_track)
+    allow(recommendation_generator)
+      .to receive(:generate_with_seed)
+      .and_return(build_recommendation(track: recommended_track, seed_track: current_track))
+
+    view_model = build_view_model
+    view_model.state.search_results = [current_track]
+
+    view_model.generate_recommendation_async
 
     expect(source).to have_received(:add_to_queue).with(recommended_track)
     expect(view_model.state.queue_tracks).to include(recommended_track)

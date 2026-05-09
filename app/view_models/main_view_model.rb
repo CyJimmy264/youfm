@@ -50,6 +50,7 @@ module YouFM
         @playlist_tracks_loading_started_at = nil
         @playlist_tracks_loading_elapsed = nil
         @next_queue_refresh_at = nil
+        initialize_state_notifier
         @state = State.new(
           source_name: source.name,
           configured: source.configured?,
@@ -79,6 +80,24 @@ module YouFM
       end
 
       attr_reader :state
+
+      def revision
+        @state_revision_mutex.synchronize { @state_revision }
+      end
+
+      def wait_for_revision(revision, timeout:)
+        deadline = monotonic_time + timeout
+        @state_revision_mutex.synchronize do
+          while @state_revision <= revision
+            remaining = deadline - monotonic_time
+            break if remaining <= 0
+
+            @state_condition.wait(@state_revision_mutex, remaining)
+          end
+
+          @state_revision
+        end
+      end
 
       def bootstrap
         sync_connection_state!
@@ -341,6 +360,10 @@ module YouFM
         update_status("Recommendation failed: #{friendly_error_message(e)}")
       end
 
+      def generate_recommendation_async
+        enqueue_recommendation_async(trigger: :manual)
+      end
+
       def similar_artist_pool_limit
         recommendation_coordinator.similar_artist_pool_limit
       end
@@ -392,6 +415,12 @@ module YouFM
       private
 
       attr_reader :source, :recommendation_coordinator, :recommendation_seed_store, :lastfm_authenticator
+
+      def initialize_state_notifier
+        @state_revision_mutex = Mutex.new
+        @state_condition = ConditionVariable.new
+        @state_revision = 0
+      end
 
       def selected_track
         return nil if state.selected_index.nil?
@@ -539,10 +568,11 @@ module YouFM
       end
 
       def update_status(message)
-        return message if state.status_message == message
+        status_changed = state.status_message != message
+        state.status_message = message if status_changed
+        Services::Logger.info("[youfm] status: #{message}") if status_changed
+        notify_state_changed
 
-        state.status_message = message
-        Services::Logger.info("[youfm] status: #{message}")
         message
       end
 
@@ -888,6 +918,17 @@ module YouFM
         return 'Queue refresh rate-limited by Spotify' unless retry_after_seconds&.positive?
 
         "Queue refresh rate-limited by Spotify, retrying in #{retry_after_seconds}s"
+      end
+
+      def notify_state_changed
+        @state_revision_mutex.synchronize do
+          @state_revision += 1
+          @state_condition.broadcast
+        end
+      end
+
+      def monotonic_time
+        Process.clock_gettime(Process::CLOCK_MONOTONIC)
       end
     end
   end

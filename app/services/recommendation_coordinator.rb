@@ -8,6 +8,7 @@ module YouFM
         @source = source
         @seed_store = seed_store
         @in_flight = false
+        @in_flight_mutex = Mutex.new
       end
 
       def similar_artist_pool_limit
@@ -19,11 +20,53 @@ module YouFM
       end
 
       def reset
-        @in_flight = false
+        in_flight_mutex.synchronize { @in_flight = false }
       end
 
       def enqueue(seed_tracks:, excluded_track_ids:, playlist_name:, queue_tracks:, trigger:, append_track:,
                   update_status:)
+        started = start_recommendation
+        return recommendation_status(trigger, :already_in_flight, update_status:) unless started
+
+        perform_enqueue(
+          seed_tracks: seed_tracks,
+          excluded_track_ids: excluded_track_ids,
+          playlist_name: playlist_name,
+          queue_tracks: queue_tracks,
+          trigger: trigger,
+          append_track: append_track,
+          update_status: update_status
+        )
+      ensure
+        finish_recommendation if started
+      end
+
+      def enqueue_async(**kwargs)
+        unless start_recommendation
+          Services::Logger.info(
+            "[youfm] recommendation skipped: trigger=#{kwargs.fetch(:trigger)} reason=already_in_flight"
+          )
+          recommendation_status(kwargs.fetch(:trigger), :already_in_flight, update_status: kwargs.fetch(:update_status))
+          return
+        end
+
+        Thread.new do
+          perform_enqueue(**kwargs)
+        rescue StandardError => e
+          message = "Recommendation failed: #{e.message}"
+          kwargs.fetch(:update_status).call(message)
+          Services::Logger.warn("[youfm] recommendation failed: #{e.class}: #{e.message}")
+        ensure
+          finish_recommendation
+        end
+      end
+
+      private
+
+      attr_reader :recommendation_generator, :source, :seed_store, :in_flight_mutex
+
+      def perform_enqueue(seed_tracks:, excluded_track_ids:, playlist_name:, queue_tracks:, trigger:, append_track:,
+                          update_status:)
         return recommendation_status(trigger, :missing_seed_tracks, update_status:) if seed_tracks.empty?
 
         recommendation = recommendation_generator.generate_with_seed(
@@ -47,29 +90,17 @@ module YouFM
         message
       end
 
-      def enqueue_async(**kwargs)
-        if @in_flight
-          Services::Logger.info(
-            "[youfm] recommendation skipped: trigger=#{kwargs.fetch(:trigger)} reason=already_in_flight"
-          )
-          return
-        end
+      def start_recommendation
+        in_flight_mutex.synchronize do
+          return false if @in_flight
 
-        @in_flight = true
-        Thread.new do
-          enqueue(**kwargs)
-        rescue StandardError => e
-          message = "Recommendation failed: #{e.message}"
-          kwargs.fetch(:update_status).call(message)
-          Services::Logger.warn("[youfm] recommendation failed: #{e.class}: #{e.message}")
-        ensure
-          @in_flight = false
+          @in_flight = true
         end
       end
 
-      private
-
-      attr_reader :recommendation_generator, :source, :seed_store
+      def finish_recommendation
+        in_flight_mutex.synchronize { @in_flight = false }
+      end
 
       def seed_label_for(track, playlist_name)
         label = "#{track.title} — #{track.artist_line}"
@@ -90,6 +121,8 @@ module YouFM
             'Last.fm/Spotify did not return a suitable track'
           when :duplicate
             'the candidate is already in the queue'
+          when :already_in_flight
+            'another recommendation is already running'
           else
             'unknown reason'
           end

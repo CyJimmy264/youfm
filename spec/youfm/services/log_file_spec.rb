@@ -39,6 +39,19 @@ RSpec.describe YouFM::Services::LogFile, :real_log_file do
     end
   end
 
+  it 'returns UTF-8 lines from a binary-read log file' do
+    Dir.mktmpdir do |tmpdir|
+      path = File.join(tmpdir, 'youfm.log')
+      File.binwrite(path, "[2026-05-10T00:00:00+05:00] [youfm] seed: Взят из плейлиста\n")
+
+      line = described_class.new(path:).tail(lines: 1).first
+
+      expect(line.encoding).to eq(Encoding::UTF_8)
+      expect(line).to include('Взят из плейлиста')
+      expect { JSON.generate(lines: [line]) }.not_to output.to_stderr
+    end
+  end
+
   it 'normalizes glued timestamp-only leftovers from older log writes' do
     Dir.mktmpdir do |tmpdir|
       path = File.join(tmpdir, 'youfm.log')
