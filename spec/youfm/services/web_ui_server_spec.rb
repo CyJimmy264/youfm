@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'rack/mock'
 
 RSpec.describe YouFM::Services::WebUiServer do
   let(:state) do
@@ -39,6 +40,10 @@ RSpec.describe YouFM::Services::WebUiServer do
     described_class.new(view_model: view_model, settings_store: settings_store)
   end
 
+  def rack_request(server = build_server)
+    Rack::MockRequest.new(server)
+  end
+
   it 'renders playback controls and status' do
     html = build_server.send(:render_page)
 
@@ -71,15 +76,28 @@ RSpec.describe YouFM::Services::WebUiServer do
   end
 
   it 'serves recent log lines as json' do
-    allow(YouFM::Services::LogFile).to receive(:tail).with(lines: 50).and_return(['line 1', 'line 2'])
+    allow(YouFM::Services::LogFile).to receive(:tail).with(lines: 50).and_return(['line 1', '', 'line 2'])
     allow(YouFM::Services::LogFile).to receive(:path).and_return('/tmp/youfm.log')
-    response = WEBrick::HTTPResponse.new(WEBrick::Config::HTTP)
 
-    build_server.send(:handle_log, response)
+    response = rack_request.get('/log')
 
     expect(response.status).to eq(200)
     expect(response['Content-Type']).to eq('application/json; charset=utf-8')
-    expect(JSON.parse(response.body)).to eq('path' => '/tmp/youfm.log', 'lines' => ['line 1', 'line 2'])
+    expect(JSON.parse(response.body)).to include('path' => '/tmp/youfm.log', 'lines' => ['line 1', 'line 2'])
+  end
+
+  it 'serves recent log lines as an event stream' do
+    allow(YouFM::Services::LogFile).to receive(:tail).with(lines: 50).and_return(['line 1'])
+    allow(YouFM::Services::LogFile).to receive(:path).and_return('/tmp/youfm.log')
+
+    status, headers, body = build_server.call(Rack::MockRequest.env_for('/log/stream'))
+
+    expect(status).to eq(200)
+    expect(headers['Content-Type']).to eq('text/event-stream; charset=utf-8')
+    event = body.next
+    expect(event).to start_with("event: log\ndata: ")
+    expect(event).to include('"path":"/tmp/youfm.log","lines":["line 1"]')
+    expect(event).to end_with("\n\n")
   end
 
   it 'runs player actions through the view model' do
@@ -117,12 +135,10 @@ RSpec.describe YouFM::Services::WebUiServer do
   end
 
   it 'redirects immediately after dispatching an action' do
-    request = instance_double(WEBrick::HTTPRequest, request_method: 'POST', query: { 'name' => 'refresh' }, header: {})
-    response = WEBrick::HTTPResponse.new(WEBrick::Config::HTTP)
     server = build_server
     allow(server).to receive(:start_action_worker)
 
-    server.send(:handle_action, request, response)
+    response = rack_request(server).post('/action', params: { 'name' => 'refresh' })
 
     expect(response.status).to eq(303)
     expect(response['Location']).to eq('/')
@@ -130,17 +146,14 @@ RSpec.describe YouFM::Services::WebUiServer do
   end
 
   it 'responds to ajax actions without redirecting' do
-    request = instance_double(
-      WEBrick::HTTPRequest,
-      request_method: 'POST',
-      query: { 'name' => 'refresh' },
-      header: { 'accept' => ['application/json'] }
-    )
-    response = WEBrick::HTTPResponse.new(WEBrick::Config::HTTP)
     server = build_server
     allow(server).to receive(:start_action_worker)
 
-    server.send(:handle_action, request, response)
+    response = rack_request(server).post(
+      '/action',
+      params: { 'name' => 'refresh' },
+      'HTTP_ACCEPT' => 'application/json'
+    )
 
     expect(response.status).to eq(202)
     expect(response['Content-Type']).to eq('application/json; charset=utf-8')

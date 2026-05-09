@@ -85,13 +85,17 @@ module YouFM
       def playlist_tracks_page(playlist_id, limit: 100, offset: 0, snapshot_id: nil)
         cached_page = cached_playlist_tracks_page(playlist_id, limit:, offset:, snapshot_id:)
         if cached_page
-          puts "[youfm] spotify playlist page cache hit: playlist_id=#{playlist_id} " \
-               "snapshot_id=#{snapshot_id || 'none'} offset=#{offset} limit=#{limit}"
+          Services::Logger.info(
+            "[youfm] spotify playlist page cache hit: playlist_id=#{playlist_id} " \
+            "snapshot_id=#{snapshot_id || 'none'} offset=#{offset} limit=#{limit}"
+          )
           return cached_page
         end
 
-        puts "[youfm] spotify playlist page cache miss: playlist_id=#{playlist_id} " \
-             "snapshot_id=#{snapshot_id || 'none'} offset=#{offset} limit=#{limit}"
+        Services::Logger.info(
+          "[youfm] spotify playlist page cache miss: playlist_id=#{playlist_id} " \
+          "snapshot_id=#{snapshot_id || 'none'} offset=#{offset} limit=#{limit}"
+        )
 
         started_at = Time.now
         body = get(
@@ -99,13 +103,15 @@ module YouFM
           { limit: limit, offset: offset, fields: PLAYLIST_TRACK_FIELDS }
         )
         elapsed = Time.now - started_at
-        puts format(
-          '[youfm] spotify playlist page fetched: playlist_id=%<playlist_id>s ' \
-          'offset=%<offset>s limit=%<limit>s elapsed=%<elapsed>.2fs',
-          playlist_id: playlist_id,
-          offset: offset,
-          limit: limit,
-          elapsed: elapsed
+        Services::Logger.info(
+          format(
+            '[youfm] spotify playlist page fetched: playlist_id=%<playlist_id>s ' \
+            'offset=%<offset>s limit=%<limit>s elapsed=%<elapsed>.2fs',
+            playlist_id: playlist_id,
+            offset: offset,
+            limit: limit,
+            elapsed: elapsed
+          )
         )
         tracks = Array(body['items']).filter_map do |item|
           track_payload = item['item'] || item['track']
@@ -146,7 +152,8 @@ module YouFM
 
         loop do
           page = cached_playlist_tracks_page(playlist_id, limit:, offset:, snapshot_id:)
-          return nil unless page
+          return nil if page.nil? && tracks.empty?
+          break unless page
 
           tracks.concat(page[:tracks])
           break unless page[:has_more]
@@ -365,7 +372,7 @@ module YouFM
         request['Authorization'] = "Bearer #{token}"
         request['Content-Type'] = 'application/json'
 
-        puts "[youfm] spotify request: #{request.method} #{request.uri}"
+        Services::Logger.info("[youfm] spotify request: #{request.method} #{request.uri}")
         Net::HTTP.start(
           request.uri.host,
           request.uri.port,

@@ -128,7 +128,9 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
   it 'logs status changes to stdout' do
     view_model = build_view_model
 
-    expect { view_model.status = 'Visible status' }.to output("[youfm] status: Visible status\n").to_stdout
+    expect { view_model.status = 'Visible status' }.to output(
+      /\A\[\d{4}-\d{2}-\d{2}T[^\]]+\] \[youfm\] status: Visible status\n\z/
+    ).to_stdout
     expect { view_model.status = 'Visible status' }.not_to output.to_stdout
     expect(view_model.state.status_message).to eq('Visible status')
   end
@@ -299,6 +301,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     allow(Thread).to receive(:new).and_return(instance_double(Thread))
     allow(source).to receive(:cached_playlist_tracks).with(playlist, limit: 100).and_return(nil)
     allow(source).to receive(:cached_playlist_tracks_page).with(playlist, limit: 100, offset: 0).and_return(nil)
+    allow(YouFM::Services::Logger).to receive(:info)
 
     now = Time.utc(2026, 5, 4, 10, 0, 0)
     allow(Time).to receive(:now).and_return(now, now + 12, now + 12, now + 13)
@@ -369,6 +372,37 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
   it 'uses fully cached playlist contents immediately without lazy loading' do
     playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me',
                                            tracks_total: 2, snapshot_id: 'snap-1')
+    first_track = YouFM::Models::Track.new(
+      id: '1',
+      title: 'Track 1',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:1',
+      duration_ms: 1
+    )
+    second_track = YouFM::Models::Track.new(
+      id: '2',
+      title: 'Track 2',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:2',
+      duration_ms: 1
+    )
+    allow(source).to receive(:cached_playlist_tracks).with(playlist, limit: 100).and_return([first_track, second_track])
+    allow(Thread).to receive(:new)
+
+    view_model = build_view_model
+    view_model.state.playlists = [playlist]
+    view_model.select_playlist_index(0)
+
+    expect(view_model.state.search_results).to eq([first_track, second_track])
+    expect(view_model.state.tracks_loading_more).to be(false)
+    expect(Thread).not_to have_received(:new)
+  end
+
+  it 'uses all cached playlist contents immediately and keeps loading available when cache is partial' do
+    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me',
+                                           tracks_total: 200, snapshot_id: 'snap-1')
     first_track = YouFM::Models::Track.new(
       id: '1',
       title: 'Track 1',

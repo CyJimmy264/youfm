@@ -421,7 +421,7 @@ module YouFM
         end
         render_status
       rescue StandardError => e
-        warn("[youfm] save similar artist pool limit failed: #{e.class}: #{e.message}")
+        Services::Logger.warn("[youfm] save similar artist pool limit failed: #{e.class}: #{e.message}")
       end
 
       def handle_refresh
@@ -444,7 +444,7 @@ module YouFM
         settings_store.write_theme_name(theme.name)
         render_full
       rescue StandardError => e
-        warn("[youfm] save theme failed: #{e.class}: #{e.message}")
+        Services::Logger.warn("[youfm] save theme failed: #{e.class}: #{e.message}")
       end
 
       def on_ui_update
@@ -476,7 +476,7 @@ module YouFM
         adjust_playback_polling!
         @render_queue.push(:render_playback)
       rescue StandardError => e
-        warn("[youfm] playback refresh failed: #{e.class}: #{e.message}")
+        Services::Logger.warn("[youfm] playback refresh failed: #{e.class}: #{e.message}")
         @render_queue.push(:render_playback)
       end
 
@@ -530,7 +530,7 @@ module YouFM
         applied_limit = view_model.update_similar_artist_pool_limit(saved_limit.to_s)
         similar_artist_pool_limit_input.text = (applied_limit || view_model.similar_artist_pool_limit).to_s
       rescue StandardError => e
-        warn("[youfm] load similar artist pool limit failed: #{e.class}: #{e.message}")
+        Services::Logger.warn("[youfm] load similar artist pool limit failed: #{e.class}: #{e.message}")
         similar_artist_pool_limit_input.text = view_model.similar_artist_pool_limit.to_s
       end
 

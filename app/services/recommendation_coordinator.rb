@@ -49,7 +49,9 @@ module YouFM
 
       def enqueue_async(**kwargs)
         if @in_flight
-          puts "[youfm] recommendation skipped: trigger=#{kwargs.fetch(:trigger)} reason=already_in_flight"
+          Services::Logger.info(
+            "[youfm] recommendation skipped: trigger=#{kwargs.fetch(:trigger)} reason=already_in_flight"
+          )
           return
         end
 
@@ -59,7 +61,7 @@ module YouFM
         rescue StandardError => e
           message = "Recommendation failed: #{e.message}"
           kwargs.fetch(:update_status).call(message)
-          warn "[youfm] recommendation failed: #{e.class}: #{e.message}"
+          Services::Logger.warn("[youfm] recommendation failed: #{e.class}: #{e.message}")
         ensure
           @in_flight = false
         end

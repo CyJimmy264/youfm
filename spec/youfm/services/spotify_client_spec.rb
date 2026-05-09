@@ -383,7 +383,7 @@ RSpec.describe YouFM::Services::SpotifyClient do
   end
 
   describe '#cached_playlist_tracks' do
-    it 'returns full cached playlist only when every page is present' do
+    it 'returns all contiguous cached playlist pages' do
       playlist_cache = instance_double(YouFM::Services::SpotifyPlaylistCache)
       allow(playlist_cache).to receive(:fetch).with(
         playlist_id: 'playlist-1',
@@ -434,6 +434,45 @@ RSpec.describe YouFM::Services::SpotifyClient do
       result = client.cached_playlist_tracks('playlist-1', limit: 100, snapshot_id: 'snapshot-1')
 
       expect(result.map(&:display_label)).to eq(['Track 1 - Artist', 'Track 2 - Artist'])
+    end
+
+    it 'returns partial cached playlist when later pages are missing' do
+      playlist_cache = instance_double(YouFM::Services::SpotifyPlaylistCache)
+      allow(playlist_cache).to receive(:fetch).with(
+        playlist_id: 'playlist-1',
+        snapshot_id: 'snapshot-1',
+        offset: 0,
+        limit: 100
+      ).and_return(
+        {
+          tracks: [
+            {
+              'id' => 'track-1',
+              'name' => 'Track 1',
+              'artists' => [{ 'name' => 'Artist' }],
+              'album' => { 'name' => 'Album' },
+              'uri' => 'spotify:track:1',
+              'duration_ms' => 123_000
+            }
+          ],
+          has_more: true
+        }
+      )
+      allow(playlist_cache).to receive(:fetch).with(
+        playlist_id: 'playlist-1',
+        snapshot_id: 'snapshot-1',
+        offset: 100,
+        limit: 100
+      ).and_return(nil)
+      client = described_class.new(
+        access_token: 'token',
+        base_url: 'https://api.spotify.test/v1',
+        playlist_cache: playlist_cache
+      )
+
+      result = client.cached_playlist_tracks('playlist-1', limit: 100, snapshot_id: 'snapshot-1')
+
+      expect(result.map(&:display_label)).to eq(['Track 1 - Artist'])
     end
   end
 

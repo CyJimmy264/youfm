@@ -2,7 +2,10 @@
 
 require 'cgi'
 require 'json'
-require 'webrick'
+require 'puma'
+require 'puma/server'
+require 'rack'
+require 'securerandom'
 
 module YouFM
   module Services
@@ -23,22 +26,25 @@ module YouFM
       def start
         return if @server
 
-        @server = WEBrick::HTTPServer.new(
-          BindAddress: '127.0.0.1',
-          Port: port,
-          AccessLog: [],
-          Logger: WEBrick::Log.new($stderr, WEBrick::Log::WARN)
+        @server = Puma::Server.new(
+          self,
+          nil,
+          min_threads: 0,
+          max_threads: 4,
+          persistent_timeout: 0,
+          enable_keep_alives: false,
+          log_writer: Puma::LogWriter.null
         )
-        mount_routes
+        @server.add_tcp_listener('127.0.0.1', port)
         start_action_worker
-        @thread = Thread.new { @server.start }
-        puts "[youfm] web ui listening on http://127.0.0.1:#{port}"
+        @thread = @server.run
+        Services::Logger.info("[youfm] web ui listening on http://127.0.0.1:#{port}")
       end
 
       def stop
         return unless @server
 
-        @server.shutdown
+        @server.stop(true)
         @thread&.join(2)
       ensure
         stop_action_worker
@@ -50,41 +56,72 @@ module YouFM
 
       attr_reader :view_model, :settings_store, :port, :mutex, :server, :action_queue
 
-      def mount_routes
-        server.mount_proc('/') { |request, response| handle_index(request, response) }
-        server.mount_proc('/action') { |request, response| handle_action(request, response) }
-        server.mount_proc('/log') { |_request, response| handle_log(response) }
+      public
+
+      def call(env)
+        request = Rack::Request.new(env)
+        case request.path_info
+        when '/'
+          handle_index
+        when '/action'
+          handle_action(request)
+        when '/log'
+          handle_log
+        when '/log/stream'
+          handle_log_stream
+        else
+          not_found
+        end
       end
 
-      def handle_index(_request, response)
+      private
+
+      def handle_index
         started_at = Time.now
-        render_response(response)
+        response = render_response
         log_request_timing('GET /', started_at)
+        response
       end
 
-      def handle_action(request, response)
-        return method_not_allowed(response) unless request.request_method == 'POST'
+      def handle_action(request)
+        return method_not_allowed unless request.post?
 
-        message = dispatch_action(request.query['name'].to_s, request.query.dup)
-        return render_action_response(response, message) if json_action_request?(request)
+        params = request.params
+        message = dispatch_action(params['name'].to_s, params.dup)
+        return render_action_response(message) if json_action_request?(request)
 
-        redirect_home(response)
+        redirect_home
       rescue StandardError => e
         message = "Web UI action failed: #{e.message}"
         mutex.synchronize { view_model.status = message }
-        return render_action_response(response, message, status: 500) if json_action_request?(request)
+        return render_action_response(message, status: 500) if json_action_request?(request)
 
-        redirect_home(response)
+        redirect_home
       end
 
-      def handle_log(response)
-        lines = Services::LogFile.tail(lines: 50)
-        lines = ['No log lines yet'] if lines.empty?
-        response.status = 200
-        response['Content-Type'] = 'application/json; charset=utf-8'
-        response.body = JSON.generate(path: Services::LogFile.path, lines: lines)
-        response.content_length = response.body.bytesize
-        response.keep_alive = false
+      def handle_log
+        started_at = monotonic_time
+        request_id = SecureRandom.hex(3)
+        payload = recent_log_payload
+        tail_elapsed_ms = elapsed_ms_since(started_at)
+        json_response(JSON.generate(payload), { 'Cache-Control' => 'no-store' })
+      ensure
+        if started_at
+          log_slow_log_request(request_id:, tail_elapsed_ms:, total_elapsed_ms: elapsed_ms_since(started_at))
+        end
+      end
+
+      def handle_log_stream
+        [
+          200,
+          {
+            'Content-Type' => 'text/event-stream; charset=utf-8',
+            'Cache-Control' => 'no-store',
+            'Connection' => 'keep-alive',
+            'X-Accel-Buffering' => 'no'
+          },
+          log_stream_body
+        ]
       end
 
       def dispatch_action(name, params)
@@ -93,8 +130,10 @@ module YouFM
         message = "Web UI action queued: #{action_label(name)}"
         message = "#{message} (pending: #{pending_count})" if pending_count > 1
         mutex.synchronize { view_model.status = message }
-        puts "[youfm] web ui action queued: #{action_label(name)} pending=#{pending_count} " \
-             "worker_alive=#{@worker_thread&.alive?}"
+        Services::Logger.info(
+          "[youfm] web ui action queued: #{action_label(name)} pending=#{pending_count} " \
+          "worker_alive=#{@worker_thread&.alive?}"
+        )
         action_queue << [name, params]
 
         message
@@ -127,9 +166,9 @@ module YouFM
       def run_queued_action(name, params)
         label = action_label(name)
         mutex.synchronize { view_model.status = "Web UI action started: #{label}" }
-        puts "[youfm] web ui action started: #{label}"
+        Services::Logger.info("[youfm] web ui action started: #{label}")
         run_action(name, params)
-        puts "[youfm] web ui action finished: #{label}"
+        Services::Logger.info("[youfm] web ui action finished: #{label}")
       end
 
       def run_action(name, params)
@@ -176,37 +215,44 @@ module YouFM
         end
       end
 
-      def render_response(response)
-        response.status = 200
-        response['Content-Type'] = 'text/html; charset=utf-8'
+      def render_response
         started_at = Time.now
-        response.body = render_page
-        response.content_length = response.body.bytesize
-        response.keep_alive = false
+        body = render_page
         log_request_timing('render_page', started_at)
+        html_response(body)
       end
 
-      def method_not_allowed(response)
-        response.status = 405
-        response['Allow'] = 'POST'
-        response.body = 'Method Not Allowed'
+      def method_not_allowed
+        rack_response(405, 'Method Not Allowed', 'Allow' => 'POST')
       end
 
-      def render_action_response(response, message, status: 202)
-        response.status = status
-        response['Content-Type'] = 'application/json; charset=utf-8'
-        response.body = JSON.generate(status: message)
-        response.content_length = response.body.bytesize
-        response.keep_alive = false
+      def render_action_response(message, status: 202)
+        json_response(JSON.generate(status: message), {}, status:)
       end
 
       def json_action_request?(request)
-        Array(request.header['accept']).any? { |value| value.include?('application/json') }
+        request.get_header('HTTP_ACCEPT').to_s.include?('application/json')
       end
 
-      def redirect_home(response)
-        response.status = 303
-        response['Location'] = '/'
+      def redirect_home
+        rack_response(303, '', 'Location' => '/')
+      end
+
+      def not_found
+        rack_response(404, 'Not Found')
+      end
+
+      def html_response(body)
+        rack_response(200, body, 'Content-Type' => 'text/html; charset=utf-8')
+      end
+
+      def json_response(body, headers = {}, status: 200)
+        rack_response(status, body, { 'Content-Type' => 'application/json; charset=utf-8' }.merge(headers))
+      end
+
+      def rack_response(status, body, headers = {})
+        headers = { 'Content-Length' => body.bytesize.to_s }.merge(headers)
+        [status, headers, [body]]
       end
 
       def render_page
@@ -254,7 +300,8 @@ module YouFM
                 }
                 .status { display: grid; gap: 8px; margin-bottom: 22px; color: var(--muted); }
                 .status strong { color: var(--text); font-weight: 650; }
-                .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+                .actions { display: grid; gap: 14px; }
+                .button-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
                 button, input, select {
                   min-height: 44px;
                   border: 1px solid var(--line);
@@ -274,9 +321,16 @@ module YouFM
                   background: #0f151d;
                 }
                 input { width: 120px; }
-                select { min-width: min(360px, 100%); }
+                select { min-width: 0; width: 100%; }
                 form { margin: 0; }
-                .pool, .device-form { display: flex; gap: 8px; align-items: center; }
+                .pool { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+                .device-form {
+                  display: grid;
+                  grid-template-columns: auto minmax(240px, 1fr) auto;
+                  gap: 10px;
+                  align-items: center;
+                  width: 100%;
+                }
                 .pool label, .device-form label { color: var(--muted); }
                 .log-header { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
                 .log-title { margin: 0; font-size: 18px; font-weight: 650; }
@@ -296,7 +350,8 @@ module YouFM
                 @media (max-width: 640px) {
                   main { margin: 20px auto; }
                   .panel { padding: 18px; border-radius: 18px; }
-                  .actions, .pool, .device-form { align-items: stretch; flex-direction: column; }
+                  .button-row, .pool { align-items: stretch; flex-direction: column; }
+                  .device-form { grid-template-columns: 1fr; }
                   .log-header { flex-direction: column; }
                   button, input, select { width: 100%; }
                 }
@@ -314,35 +369,53 @@ module YouFM
                   </div>
                   <div class="actions">
                     #{device_html}
-                    #{action_form('toggle', 'Play/Pause', primary: true)}
-                    #{action_form('next', 'Next')}
-                    #{action_form('generate', 'Generate Next')}
+                    <div class="button-row">
+                      #{action_form('toggle', 'Play/Pause', primary: true)}
+                      #{action_form('next', 'Next')}
+                      #{action_form('generate', 'Generate Next')}
+                      #{action_form('refresh', 'Refresh')}
+                      #{action_form('sync_library', 'Sync Library')}
+                    </div>
                     <form class="pool" method="post" action="/action">
                       <input type="hidden" name="name" value="apply_pool">
                       <label for="pool_limit">Artist Pool</label>
                       <input id="pool_limit" name="pool_limit" value="#{escape(pool_limit)}">
                       <button type="submit">Apply</button>
                     </form>
-                    #{action_form('refresh', 'Refresh')}
-                    #{action_form('sync_library', 'Sync Library')}
                   </div>
                 </section>
                 #{recent_log_panel}
               </main>
               <script>
-                async function refreshLog() {
+                function renderLog(payload) {
                   const log = document.getElementById('recent_log');
                   const path = document.getElementById('log_path');
                   if (!log) return;
 
+                  if (path && payload.path) path.textContent = payload.path;
+                  log.textContent = (payload.lines || ['No log lines yet']).join('\\n');
+                  log.scrollTop = log.scrollHeight;
+                }
+
+                async function refreshLog() {
                   try {
                     const response = await fetch('/log', { headers: { 'Accept': 'application/json' } });
-                    const payload = await response.json();
-                    if (path && payload.path) path.textContent = payload.path;
-                    log.textContent = (payload.lines || ['No log lines yet']).join('\\n');
+                    renderLog(await response.json());
                   } catch (error) {
+                    const log = document.getElementById('recent_log');
                     if (log.textContent === 'Loading log...') log.textContent = 'No log lines yet';
                   }
+                }
+
+                if (window.EventSource) {
+                  const logEvents = new EventSource('/log/stream');
+                  logEvents.addEventListener('log', (event) => renderLog(JSON.parse(event.data)));
+                  logEvents.onerror = () => {
+                    if (document.getElementById('recent_log')?.textContent === 'Loading log...') refreshLog();
+                  };
+                } else {
+                  refreshLog();
+                  setInterval(refreshLog, 1000);
                 }
 
                 document.querySelectorAll('form[action="/action"]').forEach((form) => {
@@ -369,8 +442,6 @@ module YouFM
                   });
                 });
 
-                refreshLog();
-                setInterval(refreshLog, 1000);
               </script>
             </body>
             </html>
@@ -427,7 +498,7 @@ module YouFM
 
       def log_request_timing(label, started_at)
         elapsed_ms = ((Time.now - started_at) * 1000).round
-        puts("[youfm] web ui #{label} finished in #{elapsed_ms}ms")
+        Services::Logger.info("[youfm] web ui #{label} finished in #{elapsed_ms}ms")
       rescue StandardError
         nil
       end
@@ -437,7 +508,58 @@ module YouFM
         yield
       ensure
         elapsed_ms = ((monotonic_time - started_at) * 1000).round
-        puts("[youfm] web ui render_step #{label} finished in #{elapsed_ms}ms") if elapsed_ms >= 100
+        Services::Logger.info("[youfm] web ui render_step #{label} finished in #{elapsed_ms}ms") if elapsed_ms >= 100
+      end
+
+      def log_elapsed(label, started_at)
+        Services::Logger.info("[youfm] web ui #{label} finished in #{elapsed_ms_since(started_at)}ms")
+      rescue StandardError
+        nil
+      end
+
+      def recent_log_payload
+        lines = Services::LogFile.tail(lines: 50).reject { |line| line.to_s.empty? }
+        lines = ['No log lines yet'] if lines.empty?
+        { path: Services::LogFile.path, lines: lines, revision: Services::LogFile.revision }
+      end
+
+      def log_stream_body
+        Enumerator.new do |stream|
+          payload = recent_log_payload
+          stream << sse_event('log', payload)
+          revision = payload.fetch(:revision)
+
+          loop do
+            next_revision = Services::LogFile.wait_for_revision(revision, timeout: 15)
+            if next_revision > revision
+              payload = recent_log_payload
+              stream << sse_event('log', payload)
+              revision = payload.fetch(:revision)
+            else
+              stream << ": heartbeat\n\n"
+            end
+          end
+        rescue IOError, Errno::EPIPE
+          nil
+        end
+      end
+
+      def sse_event(event, payload)
+        "event: #{event}\ndata: #{JSON.generate(payload)}\n\n"
+      end
+
+      def log_slow_log_request(request_id:, tail_elapsed_ms:, total_elapsed_ms:)
+        return if total_elapsed_ms < 100
+
+        Services::Logger.info(
+          "[youfm] web ui GET /log #{request_id} tail=#{tail_elapsed_ms || 0}ms total=#{total_elapsed_ms}ms"
+        )
+      rescue StandardError
+        nil
+      end
+
+      def elapsed_ms_since(started_at)
+        ((monotonic_time - started_at) * 1000).round
       end
 
       def monotonic_time

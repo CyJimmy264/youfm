@@ -52,8 +52,10 @@ module YouFM
               end
               next unless candidate
 
-              puts "[youfm] recommendation generated: playlist=#{playlist_name || 'unknown'} " \
-                   "seed=#{seed_track.display_label.inspect} result=#{candidate.display_label.inspect}"
+              Services::Logger.info(
+                "[youfm] recommendation generated: playlist=#{playlist_name || 'unknown'} " \
+                "seed=#{seed_track.display_label.inspect} result=#{candidate.display_label.inspect}"
+              )
               return Recommendation.new(track: candidate, seed_track: seed_track)
             end
           end
@@ -61,10 +63,10 @@ module YouFM
 
         nil
       rescue LastfmClient::Error => e
-        warn "Last.fm API error during recommendation: #{e.message}"
+        Services::Logger.warn("[youfm] Last.fm API error during recommendation: #{e.message}")
         nil
       rescue SpotifyClient::Error => e
-        warn "Spotify API error during recommendation: #{e.message}"
+        Services::Logger.warn("[youfm] Spotify API error during recommendation: #{e.message}")
         nil
       end
 
@@ -74,8 +76,10 @@ module YouFM
         window_size = [SIMILAR_ARTIST_WINDOW_SIZE, similar_artists.length].min
         offset = rand(similar_artists.length).floor
         window = similar_artists.rotate(offset).first(window_size)
-        puts "[youfm] recommendation similar artists: total=#{similar_artists.length} " \
-             "pool_limit=#{similar_artist_pool_limit} offset=#{offset} window=#{window.map(&:name).join(' | ')}"
+        Services::Logger.info(
+          "[youfm] recommendation similar artists: total=#{similar_artists.length} " \
+          "pool_limit=#{similar_artist_pool_limit} offset=#{offset} window=#{window.map(&:name).join(' | ')}"
+        )
         window
       end
 
@@ -85,11 +89,12 @@ module YouFM
         artist_name = normalize_text(generated_artist_name)
         title = normalize_text(generated_title)
 
-        spotify_artist.include?(artist_name) && spotify_title.include?(title)
+        (spotify_artist.include?(artist_name) || artist_name.include?(spotify_artist)) &&
+          (spotify_title.include?(title) || title.include?(spotify_title))
       end
 
       def normalize_text(value)
-        value.to_s.downcase.gsub(/[^a-z0-9]+/, ' ').strip
+        value.to_s.downcase.gsub(/(remastered(\s\d+)*|the)/, ' ').gsub(/[^a-z0-9]+/, ' ').strip
       end
 
       def normalize_pool_limit(value)

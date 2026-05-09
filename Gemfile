@@ -4,7 +4,6 @@ source 'https://rubygems.org'
 
 gemspec
 gem 'qt', '~> 0.1.7'
-gem 'webrick', '~> 1.8'
 
 group :development, :test do
   gem 'bundler', '>= 2.4'
@@ -16,3 +15,7 @@ group :development, :test do
   gem 'rubocop-rspec', '~> 3.3'
   gem 'simplecov', '~> 0.22'
 end
+
+gem 'puma', '~> 6.0'
+
+gem 'rack', '~> 3.0'

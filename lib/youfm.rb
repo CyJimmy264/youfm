@@ -21,7 +21,6 @@ module YouFM
   class CLI
     def self.start(_argv = [])
       app = YouFM::Application.boot!
-      YouFM::Services::LogFile.install!
       web_ui_server = YouFM::Application.container.fetch(:web_ui_server)
       web_ui_server.start
       main_window = YouFM::Application.container.fetch(:main_window)

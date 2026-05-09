@@ -559,7 +559,7 @@ module YouFM
         return message if state.status_message == message
 
         state.status_message = message
-        puts "[youfm] status: #{message}"
+        Services::Logger.info("[youfm] status: #{message}")
         message
       end
 
@@ -605,8 +605,10 @@ module YouFM
         return if @last_recommendation_seed_track_id == current_track_id
 
         schedule_recommendation_for_track(track)
-        puts "[youfm] playback track changed: previous=#{previous_track_id || 'none'} " \
-             "current=#{current_track_id}; scheduling recommendation"
+        Services::Logger.info(
+          "[youfm] playback track changed: previous=#{previous_track_id || 'none'} " \
+          "current=#{current_track_id}; scheduling recommendation"
+        )
         enqueue_recommendation_async(trigger: :playback_change)
         :recommendation_queued
       end
@@ -838,10 +840,12 @@ module YouFM
         state.selected_index = tracks.empty? ? nil : 0
         state.tracks_title = "Playlist: #{playlist.name}"
         @playlist_tracks_offset = tracks.length
-        @playlist_tracks_has_more = false
+        @playlist_tracks_has_more = tracks.length < playlist.tracks_total
         update_status(
           if tracks.empty?
             "Playlist is empty: #{playlist.name}"
+          elsif @playlist_tracks_has_more
+            "Loaded #{tracks.length} cached tracks from #{playlist.name}"
           else
             "Loaded all #{tracks.length} tracks from #{playlist.name}"
           end
