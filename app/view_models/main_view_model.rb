@@ -42,13 +42,6 @@ module YouFM
         @recently_played_track_ids = []
         @last_recommendation_seed_track_id = nil
         @now_playing_recommendation_seeds = {}
-        @playlist_tracks_playlist_id = nil
-        @playlist_tracks_offset = 0
-        @playlist_tracks_has_more = false
-        @playlist_tracks_loading = false
-        @playlist_tracks_loading_label = nil
-        @playlist_tracks_loading_started_at = nil
-        @playlist_tracks_loading_elapsed = nil
         @next_queue_refresh_at = nil
         initialize_state_notifier
         @state = State.new(
@@ -76,6 +69,13 @@ module YouFM
           recommendation_seed: 'None',
           selected_queue_recommendation_seed: 'None',
           playing: false
+        )
+        @playlist_tracks_loader = PlaylistTracksLoader.new(
+          state: state,
+          source: source,
+          page_size: PLAYLIST_PAGE_SIZE,
+          update_status: method(:update_status),
+          friendly_error_message: method(:friendly_error_message)
         )
       end
 
@@ -241,7 +241,7 @@ module YouFM
         return if index >= state.playlists.length
 
         state.selected_playlist_index = index
-        load_selected_playlist_tracks(&)
+        playlist_tracks_loader.select(selected_playlist, &)
       end
 
       def select_queue_index(index)
@@ -388,33 +388,18 @@ module YouFM
         update_status(message)
       end
 
-      def load_more_playlist_tracks(&on_loaded)
-        playlist = selected_playlist
-        return unless can_load_more_playlist_tracks?(playlist)
-
-        cached_playlist_tracks_page = cached_playlist_tracks_page_for(playlist)
-        if cached_playlist_tracks_page
-          append_playlist_tracks_page(playlist, cached_playlist_tracks_page)
-          on_loaded&.call
-          return
-        end
-
-        load_more_playlist_tracks_async(playlist, on_loaded)
+      def load_more_playlist_tracks(&)
+        playlist_tracks_loader.load_more(selected_playlist, &)
       end
 
       def refresh_playlist_loading_status
-        return unless @playlist_tracks_loading && @playlist_tracks_loading_started_at
-
-        elapsed = (Time.now - @playlist_tracks_loading_started_at).floor
-        return if @playlist_tracks_loading_elapsed == elapsed
-
-        @playlist_tracks_loading_elapsed = elapsed
-        update_status("#{@playlist_tracks_loading_label}... #{elapsed}s")
+        playlist_tracks_loader.refresh_loading_status
       end
 
       private
 
-      attr_reader :source, :recommendation_coordinator, :recommendation_seed_store, :lastfm_authenticator
+      attr_reader :source, :recommendation_coordinator, :recommendation_seed_store, :lastfm_authenticator,
+                  :playlist_tracks_loader
 
       def initialize_state_notifier
         @state_revision_mutex = Mutex.new
@@ -448,25 +433,6 @@ module YouFM
 
       def enqueue_recommendation(trigger:)
         recommendation_coordinator.enqueue(**recommendation_context(trigger))
-      end
-
-      def load_selected_playlist_tracks(&on_loaded)
-        playlist = selected_playlist
-        return unless playlist
-
-        reset_playlist_pagination
-        @playlist_tracks_playlist_id = playlist.id
-        state.search_query = ''
-        state.search_results = []
-        state.selected_index = nil
-        state.tracks_title = "Playlist: #{playlist.name}"
-        state.tracks_loading_more = true
-        update_status("Loading tracks from #{playlist.name}...")
-        on_loaded&.call
-
-        return if cached_playlist_tracks_loaded?(playlist, on_loaded)
-
-        start_playlist_tracks_async(playlist, on_loaded, loading_message: "Loading tracks from #{playlist.name}")
       end
 
       def align_selections
@@ -708,7 +674,7 @@ module YouFM
         @last_recommendation_seed_track_id = nil
         @now_playing_recommendation_seeds = {}
         @next_queue_refresh_at = nil
-        reset_playlist_pagination
+        playlist_tracks_loader.reset
       end
 
       def reset_view_state
@@ -729,72 +695,6 @@ module YouFM
         state.playing = false
       end
 
-      def cached_playlist_tracks_loaded?(playlist, on_loaded)
-        cached_tracks = source.cached_playlist_tracks(playlist, limit: PLAYLIST_PAGE_SIZE)
-        if cached_tracks
-          apply_cached_playlist_tracks(playlist, cached_tracks)
-          state.tracks_loading_more = false
-          on_loaded&.call
-          return true
-        end
-
-        cached_page = source.cached_playlist_tracks_page(playlist, limit: PLAYLIST_PAGE_SIZE, offset: 0)
-        return false unless cached_page
-
-        apply_playlist_tracks_page(playlist, cached_page)
-        state.tracks_loading_more = false
-        on_loaded&.call
-        true
-      end
-
-      def can_load_more_playlist_tracks?(playlist)
-        playlist &&
-          @playlist_tracks_playlist_id == playlist.id &&
-          @playlist_tracks_has_more &&
-          !@playlist_tracks_loading
-      end
-
-      def cached_playlist_tracks_page_for(playlist)
-        source.cached_playlist_tracks_page(
-          playlist,
-          limit: PLAYLIST_PAGE_SIZE,
-          offset: @playlist_tracks_offset
-        )
-      end
-
-      def load_more_playlist_tracks_async(playlist, on_loaded)
-        @playlist_tracks_loading = true
-        start_playlist_loading_status!("Loading more tracks from #{playlist.name}")
-        state.tracks_loading_more = true
-        Thread.new do
-          page = source.playlist_tracks_page(playlist, limit: PLAYLIST_PAGE_SIZE, offset: @playlist_tracks_offset)
-          append_playlist_tracks_page(playlist, page)
-        rescue Services::SpotifyClient::AuthenticationError
-          update_status('Connect Spotify first')
-        rescue StandardError => e
-          update_status("Playlist tracks failed: #{friendly_error_message(e)}")
-        ensure
-          finish_playlist_loading!
-          on_loaded&.call
-        end
-      end
-
-      def start_playlist_tracks_async(playlist, on_loaded, loading_message:)
-        @playlist_tracks_loading = true
-        start_playlist_loading_status!(loading_message)
-        Thread.new do
-          page = source.playlist_tracks_page(playlist, limit: PLAYLIST_PAGE_SIZE, offset: 0)
-          apply_playlist_tracks_page(playlist, page)
-        rescue Services::SpotifyClient::AuthenticationError
-          update_status('Connect Spotify first')
-        rescue StandardError => e
-          update_status("Playlist tracks failed: #{friendly_error_message(e)}")
-        ensure
-          finish_playlist_loading!
-          on_loaded&.call
-        end
-      end
-
       def recommendation_context(trigger)
         {
           seed_tracks: recommendation_seed_tracks,
@@ -805,23 +705,6 @@ module YouFM
           append_track: method(:append_recommended_track_to_local_queue),
           update_status: method(:update_status)
         }
-      end
-
-      def reset_playlist_pagination
-        @playlist_tracks_playlist_id = nil
-        @playlist_tracks_offset = 0
-        @playlist_tracks_has_more = false
-        @playlist_tracks_loading = false
-        @playlist_tracks_loading_label = nil
-        @playlist_tracks_loading_started_at = nil
-        @playlist_tracks_loading_elapsed = nil
-        state.tracks_loading_more = false
-      end
-
-      def start_playlist_loading_status!(label)
-        @playlist_tracks_loading_label = label
-        @playlist_tracks_loading_started_at = Time.now
-        @playlist_tracks_loading_elapsed = nil
       end
 
       def load_library_snapshot
@@ -840,62 +723,6 @@ module YouFM
         rescue StandardError
           []
         end
-      end
-
-      def finish_playlist_loading!
-        @playlist_tracks_loading = false
-        @playlist_tracks_loading_label = nil
-        @playlist_tracks_loading_started_at = nil
-        @playlist_tracks_loading_elapsed = nil
-        state.tracks_loading_more = false
-      end
-
-      def apply_playlist_tracks_page(playlist, page)
-        tracks = page.fetch(:tracks)
-        state.search_results = tracks
-        state.selected_index = tracks.empty? ? nil : 0
-        @playlist_tracks_offset = tracks.length
-        @playlist_tracks_has_more = page.fetch(:has_more)
-        update_status(
-          if tracks.empty?
-            "Playlist is empty: #{playlist.name}"
-          else
-            "Loaded #{tracks.length} tracks from #{playlist.name}"
-          end
-        )
-      end
-
-      def append_playlist_tracks_page(playlist, page)
-        state.search_results = [*state.search_results, *page.fetch(:tracks)]
-        state.tracks_title = "Playlist: #{playlist.name}"
-        state.selected_index ||= 0 if state.search_results.any?
-        @playlist_tracks_offset += page.fetch(:tracks).length
-        @playlist_tracks_has_more = page.fetch(:has_more)
-        state.tracks_loading_more = false unless @playlist_tracks_loading
-        update_status(
-          if @playlist_tracks_has_more
-            "Loaded #{state.search_results.length} tracks from #{playlist.name}"
-          else
-            "Loaded all #{state.search_results.length} tracks from #{playlist.name}"
-          end
-        )
-      end
-
-      def apply_cached_playlist_tracks(playlist, tracks)
-        state.search_results = tracks
-        state.selected_index = tracks.empty? ? nil : 0
-        state.tracks_title = "Playlist: #{playlist.name}"
-        @playlist_tracks_offset = tracks.length
-        @playlist_tracks_has_more = tracks.length < playlist.tracks_total
-        update_status(
-          if tracks.empty?
-            "Playlist is empty: #{playlist.name}"
-          elsif @playlist_tracks_has_more
-            "Loaded #{tracks.length} cached tracks from #{playlist.name}"
-          else
-            "Loaded all #{tracks.length} tracks from #{playlist.name}"
-          end
-        )
       end
 
       def normalize_similar_artist_pool_limit(value)
