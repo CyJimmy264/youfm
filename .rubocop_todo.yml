@@ -11,12 +11,6 @@
 Metrics/AbcSize:
   Max: 86
 
-# Offense count: 1
-# Configuration parameters: CountComments, CountAsOne, AllowedMethods, AllowedPatterns, inherit_mode.
-# AllowedMethods: refine
-Metrics/BlockLength:
-  Max: 28
-
 # Offense count: 7
 # Configuration parameters: CountComments, CountAsOne.
 Metrics/ClassLength:
@@ -32,7 +26,7 @@ Metrics/CyclomaticComplexity:
 # Offense count: 42
 # Configuration parameters: CountComments, CountAsOne, AllowedMethods, AllowedPatterns.
 Metrics/MethodLength:
-  Max: 30
+  Max: 20
 
 # Offense count: 7
 # Configuration parameters: AllowedMethods, AllowedPatterns.

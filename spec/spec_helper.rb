@@ -25,6 +25,10 @@ RSpec.configure do |config|
     YouFM::Application.instance_variable_set(:@qt_app, nil)
   end
 
+  config.before do |example|
+    allow(YouFM::Services::LogFile).to receive(:append_async) unless example.metadata[:real_log_file]
+  end
+
   config.around do |example|
     original_stdout = $stdout
     original_stderr = $stderr

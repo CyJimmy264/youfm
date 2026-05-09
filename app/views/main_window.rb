@@ -52,6 +52,11 @@ module YouFM
           widget.style_sheet = theme.application_stylesheet
         end
 
+        build_window_layout
+        start_timers
+      end
+
+      def build_window_layout
         root = QVBoxLayout.new(window)
         root.set_contents_margins(24, 24, 24, 24)
         root.spacing = 16
@@ -63,7 +68,9 @@ module YouFM
         root.add_layout(build_content_row)
         root.add_widget(build_devices_panel)
         root.add_widget(build_footer)
+      end
 
+      def start_timers
         @ui_updater = QTimer.new(window)
         @ui_updater.interval = UI_REFRESH_MS
         @ui_updater.connect('timeout') { on_ui_update }
@@ -125,44 +132,54 @@ module YouFM
 
       def build_actions_row
         QHBoxLayout.new.tap do |layout|
-          play_button = build_button(window, 'primary_button', 'Play Selected')
-          play_button.connect('clicked') { |_| handle_play_selected }
-          layout.add_widget(play_button)
-
-          @toggle_button = build_button(window, 'ghost_button', 'Resume')
-          toggle_button.connect('clicked') { |_| handle_toggle }
-          layout.add_widget(toggle_button)
-
-          @next_button = build_button(window, 'ghost_button', 'Next')
-          layout.add_widget(next_button)
-
-          generate_button = build_button(window, 'ghost_button', 'Generate Next')
-          generate_button.connect('clicked') { |_| handle_generate_recommendation }
-          layout.add_widget(generate_button)
-
-          layout.add_widget(build_label(window, 'status_label', 'Artist Pool'))
-
-          @similar_artist_pool_limit_input = QLineEdit.new(window)
-          similar_artist_pool_limit_input.object_name = 'search_input'
-          similar_artist_pool_limit_input.placeholder_text = 'Pool limit'
-          similar_artist_pool_limit_input.maximum_width = 96
-          similar_artist_pool_limit_input.text = view_model.similar_artist_pool_limit.to_s
-          layout.add_widget(similar_artist_pool_limit_input)
-
-          apply_pool_limit_button = build_button(window, 'ghost_button', 'Apply')
-          apply_pool_limit_button.connect('clicked') { |_| handle_apply_similar_artist_pool_limit }
-          layout.add_widget(apply_pool_limit_button)
-
-          refresh_button = build_button(window, 'ghost_button', 'Refresh')
-          refresh_button.connect('clicked') { |_| handle_refresh }
-          layout.add_widget(refresh_button)
-
-          @theme_button = build_button(window, 'ghost_button', 'Theme')
-          theme_button.connect('clicked') { |_| handle_switch_theme }
-          layout.add_widget(theme_button)
+          add_playback_controls(layout)
+          add_artist_pool_controls(layout)
+          add_secondary_controls(layout)
 
           layout.add_stretch(1)
         end
+      end
+
+      def add_playback_controls(layout)
+        play_button = build_button(window, 'primary_button', 'Play Selected')
+        play_button.connect('clicked') { |_| handle_play_selected }
+        layout.add_widget(play_button)
+
+        @toggle_button = build_button(window, 'ghost_button', 'Resume')
+        toggle_button.connect('clicked') { |_| handle_toggle }
+        layout.add_widget(toggle_button)
+
+        @next_button = build_button(window, 'ghost_button', 'Next')
+        layout.add_widget(next_button)
+
+        generate_button = build_button(window, 'ghost_button', 'Generate Next')
+        generate_button.connect('clicked') { |_| handle_generate_recommendation }
+        layout.add_widget(generate_button)
+      end
+
+      def add_artist_pool_controls(layout)
+        layout.add_widget(build_label(window, 'status_label', 'Artist Pool'))
+
+        @similar_artist_pool_limit_input = QLineEdit.new(window)
+        similar_artist_pool_limit_input.object_name = 'search_input'
+        similar_artist_pool_limit_input.placeholder_text = 'Pool limit'
+        similar_artist_pool_limit_input.maximum_width = 96
+        similar_artist_pool_limit_input.text = view_model.similar_artist_pool_limit.to_s
+        layout.add_widget(similar_artist_pool_limit_input)
+
+        apply_pool_limit_button = build_button(window, 'ghost_button', 'Apply')
+        apply_pool_limit_button.connect('clicked') { |_| handle_apply_similar_artist_pool_limit }
+        layout.add_widget(apply_pool_limit_button)
+      end
+
+      def add_secondary_controls(layout)
+        refresh_button = build_button(window, 'ghost_button', 'Refresh')
+        refresh_button.connect('clicked') { |_| handle_refresh }
+        layout.add_widget(refresh_button)
+
+        @theme_button = build_button(window, 'ghost_button', 'Theme')
+        theme_button.connect('clicked') { |_| handle_switch_theme }
+        layout.add_widget(theme_button)
       end
 
       def build_content_row

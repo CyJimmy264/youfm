@@ -31,34 +31,8 @@ module YouFM
         blocked_track_ids = excluded_track_ids.map(&:to_s).reject(&:empty?).to_set
 
         seed_tracks.shuffle.each do |seed_track|
-          artist_name = seed_track.artists.first
-          next unless artist_name
-
-          similar_artists = @lastfm_client.get_similar_artists(artist_name, limit: similar_artist_pool_limit)
-          next if similar_artists.empty?
-
-          similar_artists_window(similar_artists).shuffle.each do |similar_artist|
-            top_tracks = @lastfm_client.get_top_tracks(similar_artist.name, period: '12month', limit: 20)
-            next if top_tracks.empty?
-
-            top_tracks.shuffle.take([TOP_TRACK_WINDOW_SIZE, TOP_TRACK_ATTEMPTS_PER_ARTIST].min).each do |top_track|
-              query = "#{top_track.name} artist:#{similar_artist.name}"
-              spotify_tracks = @spotify_client.search_tracks(query, limit: 10)
-              candidate = spotify_tracks.find do |track|
-                next false if blocked_track_ids.include?(track.id.to_s)
-
-                spotify_track_matches?(track, generated_artist_name: similar_artist.name,
-                                              generated_title: top_track.name)
-              end
-              next unless candidate
-
-              Services::Logger.info(
-                "[youfm] recommendation generated: playlist=#{playlist_name || 'unknown'} " \
-                "seed=#{seed_track.display_label.inspect} result=#{candidate.display_label.inspect}"
-              )
-              return Recommendation.new(track: candidate, seed_track: seed_track)
-            end
-          end
+          recommendation = recommendation_for_seed_track(seed_track, blocked_track_ids, playlist_name)
+          return recommendation if recommendation
         end
 
         nil
@@ -71,6 +45,51 @@ module YouFM
       end
 
       private
+
+      def recommendation_for_seed_track(seed_track, blocked_track_ids, playlist_name)
+        artist_name = seed_track.artists.first
+        return nil unless artist_name
+
+        similar_artists = @lastfm_client.get_similar_artists(artist_name, limit: similar_artist_pool_limit)
+        return nil if similar_artists.empty?
+
+        similar_artists_window(similar_artists).shuffle.each do |similar_artist|
+          recommendation = recommendation_for_similar_artist(
+            similar_artist, blocked_track_ids, seed_track, playlist_name
+          )
+          return recommendation if recommendation
+        end
+
+        nil
+      end
+
+      def recommendation_for_similar_artist(similar_artist, blocked_track_ids, seed_track, playlist_name)
+        top_tracks = @lastfm_client.get_top_tracks(similar_artist.name, period: '12month', limit: 20)
+        return nil if top_tracks.empty?
+
+        top_tracks.shuffle.take([TOP_TRACK_WINDOW_SIZE, TOP_TRACK_ATTEMPTS_PER_ARTIST].min).each do |top_track|
+          candidate = spotify_track_candidate_for(similar_artist.name, top_track.name, blocked_track_ids)
+          next unless candidate
+
+          Services::Logger.info(
+            "[youfm] recommendation generated: playlist=#{playlist_name || 'unknown'} " \
+            "seed=#{seed_track.display_label.inspect} result=#{candidate.display_label.inspect}"
+          )
+          return Recommendation.new(track: candidate, seed_track: seed_track)
+        end
+
+        nil
+      end
+
+      def spotify_track_candidate_for(artist_name, track_name, blocked_track_ids)
+        query = "#{track_name} artist:#{artist_name}"
+        spotify_tracks = @spotify_client.search_tracks(query, limit: 10)
+        spotify_tracks.find do |track|
+          next false if blocked_track_ids.include?(track.id.to_s)
+
+          spotify_track_matches?(track, generated_artist_name: artist_name, generated_title: track_name)
+        end
+      end
 
       def similar_artists_window(similar_artists)
         window_size = [SIMILAR_ARTIST_WINDOW_SIZE, similar_artists.length].min

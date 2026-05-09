@@ -3,7 +3,7 @@
 require 'spec_helper'
 require 'tmpdir'
 
-RSpec.describe YouFM::Services::LogFile do
+RSpec.describe YouFM::Services::LogFile, :real_log_file do
   it 'stores logs in an XDG-friendly state path by default' do
     Dir.mktmpdir do |tmpdir|
       original = ENV.fetch('XDG_STATE_HOME', nil)
