@@ -657,10 +657,17 @@ module YouFM
 
       def refresh_queue_tracks!
         @queue_mutex.synchronize do
-          state.queue_tracks = filtered_queue_tracks(source.queue)
+          spotify_queue_tracks = filtered_queue_tracks(source.queue)
+          sync_local_queue_with_spotify_queue!(spotify_queue_tracks)
           retain_queue_recommendation_seeds!
           normalize_selected_queue_index!
         end
+      end
+
+      def sync_local_queue_with_spotify_queue!(spotify_queue_tracks)
+        spotify_tracks_by_id = spotify_queue_tracks.to_h { |track| [track.id.to_s, track] }
+        @recommended_queue_track_ids &= spotify_tracks_by_id.keys
+        state.queue_tracks = @recommended_queue_track_ids.filter_map { |track_id| spotify_tracks_by_id[track_id] }
       end
 
       def retain_queue_recommendation_seeds!

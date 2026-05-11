@@ -651,7 +651,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     expect(view_model.state.status_message).to include('Added recommendation to Spotify queue')
   end
 
-  it 'refreshes queue without reintroducing the currently playing track' do
+  it 'does not show arbitrary Spotify queue tracks as local recommendations' do
     old_track = YouFM::Models::Track.new(
       id: 'old-track',
       title: 'Old Track',
@@ -681,7 +681,61 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     view_model.refresh_playback
     view_model.refresh_queue
 
-    expect(view_model.state.queue_tracks).to eq([next_track])
+    expect(view_model.state.queue_tracks).to eq([])
+  end
+
+  it 'shows only recommendations that are still present in the Spotify queue' do
+    current_track = YouFM::Models::Track.new(
+      id: '1',
+      title: 'Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:1',
+      duration_ms: 1
+    )
+    first_recommendation = YouFM::Models::Track.new(
+      id: '2',
+      title: 'First Recommendation',
+      artists: ['Another Artist'],
+      album: 'Album 2',
+      uri: 'spotify:track:2',
+      duration_ms: 1
+    )
+    second_recommendation = YouFM::Models::Track.new(
+      id: '3',
+      title: 'Second Recommendation',
+      artists: ['Another Artist'],
+      album: 'Album 3',
+      uri: 'spotify:track:3',
+      duration_ms: 1
+    )
+    spotify_next_up = YouFM::Models::Track.new(
+      id: 'spotify-next',
+      title: 'Spotify Next',
+      artists: ['Spotify Artist'],
+      album: 'Spotify Album',
+      uri: 'spotify:track:spotify-next',
+      duration_ms: 1
+    )
+
+    allow(source).to receive(:add_to_queue).with(first_recommendation)
+    allow(source).to receive(:add_to_queue).with(second_recommendation)
+    allow(recommendation_generator).to receive(:generate_with_seed).and_return(
+      build_recommendation(track: first_recommendation, seed_track: current_track),
+      build_recommendation(track: second_recommendation, seed_track: current_track)
+    )
+
+    view_model = build_view_model
+    view_model.state.search_results = [current_track]
+    view_model.generate_recommendation
+    view_model.generate_recommendation
+
+    allow(source).to receive(:queue).and_return([spotify_next_up, first_recommendation])
+    view_model.refresh_queue
+
+    expect(view_model.state.queue_tracks).to eq([first_recommendation])
+    expect(view_model.state.queue_recommendation_seeds.keys).to eq(['2'])
+    expect(view_model.state.selected_queue_recommendation_seed).to eq('Track — Artist (Взят из плейлиста: Tracks)')
   end
 
   it 'generates the next recommendation when Spotify playback changes tracks' do
