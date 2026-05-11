@@ -10,7 +10,6 @@ module YouFM
       IDLE_POLLS_BEFORE_SUSPEND = 2
       UI_REFRESH_MS = 100
       THEMES = %w[dark light].freeze
-      LOADER_FRAMES = ['Loading   ', 'Loading.  ', 'Loading.. ', 'Loading...'].freeze
 
       def initialize(
         view_model:,
@@ -22,10 +21,8 @@ module YouFM
         @settings_store = settings_store
         @shutdown_requested = false
         @render_queue = Queue.new
-        @loader_frame_index = 0
         @idle_playback_polls = 0
         @last_seen_state_revision = nil
-        @last_rendered_tracks_signature = nil
         build_window
         bind_events
         apply_saved_similar_artist_pool_limit
@@ -41,11 +38,11 @@ module YouFM
 
       private
 
-      attr_reader :view_model, :theme, :settings_store, :window, :search_input, :results_list, :playlists_list,
-                  :queue_list, :device_picker, :status_label, :auth_label, :lastfm_auth_label, :device_label,
-                  :now_playing_label, :recommendation_seed_label, :toggle_button, :theme_button, :connect_button,
-                  :disconnect_button, :connect_lastfm_button, :disconnect_lastfm_button, :tracks_title_label,
-                  :next_button, :similar_artist_pool_limit_input
+      attr_reader :view_model, :theme, :settings_store, :window, :search_input, :playlists_list, :queue_list,
+                  :device_picker, :status_label, :auth_label, :lastfm_auth_label, :device_label, :now_playing_label,
+                  :recommendation_seed_label, :toggle_button, :theme_button, :connect_button, :disconnect_button,
+                  :connect_lastfm_button, :disconnect_lastfm_button, :tracks_panel, :next_button,
+                  :similar_artist_pool_limit_input
 
       def build_window
         @window = QWidget.new do |widget|
@@ -195,14 +192,8 @@ module YouFM
       end
 
       def build_tracks_panel
-        QWidget.new(window).tap do |widget|
-          layout = QVBoxLayout.new(widget)
-          layout.set_contents_margins(0, 0, 0, 0)
-          layout.spacing = 8
-          @tracks_title_label = build_label(widget, 'section_label', 'Tracks')
-          layout.add_widget(tracks_title_label)
-          layout.add_widget(build_results_list, 1)
-        end
+        @tracks_panel = TracksPanel.new(parent: window)
+        tracks_panel.widget
       end
 
       def build_playlists_panel
@@ -250,12 +241,6 @@ module YouFM
           device_button.connect('clicked') { |_| handle_activate_device }
           layout.add_widget(device_button)
         end
-      end
-
-      def build_results_list
-        @results_list = QListWidget.new(window)
-        results_list.object_name = 'results_list'
-        results_list
       end
 
       def build_playlists_list
@@ -318,9 +303,9 @@ module YouFM
       def bind_events
         search_input.connect('returnPressed()') { handle_search }
         similar_artist_pool_limit_input.connect('returnPressed()') { handle_apply_similar_artist_pool_limit }
-        results_list.connect('currentRowChanged(int)') { |index| handle_selection(index) }
-        results_list.connect('itemDoubleClicked(QListWidgetItem*)') { |_| handle_play_selected }
-        results_list.verticalScrollBar.connect('valueChanged(int)') { |_| handle_results_scroll }
+        tracks_panel.on_selection { |index| handle_selection(index) }
+        tracks_panel.on_double_click { handle_play_selected }
+        tracks_panel.on_scroll_near_bottom { handle_results_scroll }
         playlists_list.connect('currentRowChanged(int)') { |index| handle_playlist_selection(index) }
         playlists_list.connect('itemDoubleClicked(QListWidgetItem*)') { |_| handle_play_playlist }
         queue_list.connect('currentRowChanged(int)') { |index| handle_queue_selection(index) }
@@ -358,18 +343,12 @@ module YouFM
         render_full
       end
 
-      def handle_selection(_index)
-        index = results_list.currentRow
+      def handle_selection(index)
         view_model.select_index(index.to_i)
         render_status
       end
 
       def handle_results_scroll
-        scrollbar = results_list.verticalScrollBar
-        return unless scrollbar
-        return unless scrollbar.maximum.positive?
-        return unless scrollbar.value >= scrollbar.maximum - 20
-
         view_model.load_more_playlist_tracks { @render_queue.push(:render_tracks) }
       end
 
@@ -474,7 +453,7 @@ module YouFM
 
         if view_model.state.tracks_loading_more
           view_model.refresh_playlist_loading_status
-          @loader_frame_index = (@loader_frame_index + 1) % LOADER_FRAMES.length
+          tracks_panel.animate_loader_frame
           @render_queue.push(:render_tracks) if @render_queue.empty?
         end
 
@@ -579,7 +558,7 @@ module YouFM
 
       def render_status
         state = view_model.state
-        tracks_title_label.text = state.tracks_title
+        tracks_panel.render_status(state)
         toggle_button.text = state.playing ? 'Pause' : 'Resume'
         theme_button.text = "Theme: #{theme.name.upcase}"
         connect_button.text = state.connected ? 'Spotify Connected' : 'Connect Spotify'
@@ -601,20 +580,7 @@ module YouFM
       end
 
       def render_results(state)
-        scrollbar = results_list.verticalScrollBar
-        previous_scroll_value = scrollbar&.value
-        results_list.block_signals(true)
-        results_list.clear
-        state.search_results.each do |track|
-          results_list.add_item(track.display_label)
-        end
-        results_list.add_item(loader_item_text) if state.tracks_loading_more
-        results_list.current_row = state.selected_index if state.selected_index
-        results_list.block_signals(false)
-        @last_rendered_tracks_signature = tracks_signature(state)
-        return unless scrollbar && !previous_scroll_value.nil?
-
-        scrollbar.value = [previous_scroll_value, scrollbar.maximum].min
+        tracks_panel.render(state)
       end
 
       def enqueue_external_state_render
@@ -622,27 +588,11 @@ module YouFM
         return if revision == @last_seen_state_revision
 
         @last_seen_state_revision = revision
-        if tracks_signature(view_model.state) == @last_rendered_tracks_signature
+        if tracks_panel.rendered_current?(view_model.state)
           render_status
         else
           @render_queue.push(:render_tracks)
         end
-      end
-
-      def tracks_signature(state)
-        tracks = state.search_results
-        [
-          state.tracks_title,
-          tracks.length,
-          tracks.first&.id,
-          tracks.last&.id,
-          state.selected_index,
-          state.tracks_loading_more
-        ]
-      end
-
-      def loader_item_text
-        LOADER_FRAMES[@loader_frame_index]
       end
 
       def render_devices(state)
