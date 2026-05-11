@@ -3,6 +3,16 @@
 require 'spec_helper'
 
 RSpec.describe YouFM::Services::LastfmClient do
+  def http_client_with(*responses)
+    instance_double(YouFM::Services::PersistentHttpClient).tap do |http_client|
+      allow(http_client).to receive(:request).and_return(*responses)
+    end
+  end
+
+  def http_response(code:, body:)
+    instance_double(YouFM::Services::PersistentHttpClient::Response, code: code, body: body)
+  end
+
   describe '#get_similar_artists' do
     it 'returns cached similar artists without hitting the network' do
       cache = instance_double(
@@ -20,30 +30,22 @@ RSpec.describe YouFM::Services::LastfmClient do
 
     it 'fetches and caches similar artists on a cache miss' do
       cache = instance_double(YouFM::Services::LastfmSimilarArtistsCache, fetch: nil, save: true)
-      client = described_class.new(
-        api_key: 'key',
-        secret: 'secret',
-        similar_artists_cache: cache
-      )
-      response = instance_double(
-        Net::HTTPResponse,
+      response = http_response(
         code: '200',
         body: JSON.dump('similarartists' => { 'artist' => [{ 'name' => 'Phoenix', 'match' => '0.8' }] })
       )
-
-      http = instance_double(Net::HTTP, request: response)
-      allow(Net::HTTP).to receive(:start).and_return(http)
+      http_client = http_client_with(response)
+      client = described_class.new(
+        api_key: 'key',
+        secret: 'secret',
+        similar_artists_cache: cache,
+        api_http_client: http_client
+      )
 
       result = client.get_similar_artists('Air')
 
       expect(result.map(&:name)).to eq(['Phoenix'])
-      expect(Net::HTTP).to have_received(:start).with(
-        'ws.audioscrobbler.com',
-        80,
-        use_ssl: false,
-        open_timeout: 5,
-        read_timeout: 10
-      )
+      expect(http_client).to have_received(:request)
       expect(cache).to have_received(:save).with('Air', [{ 'name' => 'Phoenix', 'match' => '0.8' }])
     end
 
@@ -131,11 +133,15 @@ RSpec.describe YouFM::Services::LastfmClient do
 
     it 'fetches and caches top tracks on a cache miss' do
       cache = instance_double(YouFM::Services::LastfmTopTracksCache, fetch: nil, save: true)
-      client = described_class.new(api_key: 'key', secret: 'secret', top_tracks_cache: cache)
       tracks = [{ 'name' => 'La femme d’argent', 'playcount' => '100', 'listeners' => '10' }]
-      response = instance_double(Net::HTTPResponse, code: '200', body: JSON.dump('toptracks' => { 'track' => tracks }))
-      http = instance_double(Net::HTTP, request: response)
-      allow(Net::HTTP).to receive(:start).and_return(http)
+      response = http_response(code: '200', body: JSON.dump('toptracks' => { 'track' => tracks }))
+      http_client = http_client_with(response)
+      client = described_class.new(
+        api_key: 'key',
+        secret: 'secret',
+        top_tracks_cache: cache,
+        api_http_client: http_client
+      )
 
       result = client.get_top_tracks('Air', period: '12month', limit: 20)
 

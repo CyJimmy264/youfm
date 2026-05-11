@@ -1,70 +1,47 @@
 # frozen_string_literal: true
 
-require 'net/http'
+require 'httpx'
 
 module YouFM
   module Services
     class PersistentHttpClient
+      Response = Struct.new(:status, :headers, :body) do
+        def code
+          status.to_s
+        end
+
+        def [](key)
+          headers[key] || headers[key.to_s.downcase]
+        end
+      end
+
       def initialize(open_timeout:, read_timeout:)
-        @open_timeout = open_timeout
-        @read_timeout = read_timeout
-        @sessions = {}
-        @mutex = Mutex.new
+        @session = HTTPX.plugin(:persistent).with(
+          timeout: {
+            connect_timeout: open_timeout,
+            operation_timeout: read_timeout
+          }
+        )
       end
 
       def request(request)
-        with_session(request.uri) { |http| http.request(request) }
-      rescue IOError, Errno::ECONNRESET, Errno::EPIPE
-        reset_session(request.uri)
-        with_session(request.uri) { |http| http.request(request) }
+        response = session.request(
+          request.method,
+          request.uri,
+          headers: request_headers(request),
+          body: request.body
+        )
+        raise response.error if response.is_a?(HTTPX::ErrorResponse)
+
+        Response.new(response.status, response.headers, response.body.to_s)
       end
 
       private
 
-      attr_reader :open_timeout, :read_timeout, :sessions, :mutex
+      attr_reader :session
 
-      def with_session(uri)
-        mutex.synchronize do
-          yield(session_for(uri))
-        end
-      end
-
-      def session_for(uri)
-        key = session_key(uri)
-        session = sessions[key]
-        return session if reusable_session?(session)
-
-        sessions[key] = start_session(uri)
-      end
-
-      def reusable_session?(session)
-        return false unless session
-        return true unless session.respond_to?(:started?)
-
-        session.started?
-      end
-
-      def start_session(uri)
-        Net::HTTP.start(
-          uri.host,
-          uri.port,
-          use_ssl: uri.scheme == 'https',
-          open_timeout: open_timeout,
-          read_timeout: read_timeout
-        )
-      end
-
-      def reset_session(uri)
-        mutex.synchronize do
-          session = sessions.delete(session_key(uri))
-          session&.finish if session.respond_to?(:started?) && session.started?
-        rescue IOError
-          nil
-        end
-      end
-
-      def session_key(uri)
-        [uri.scheme, uri.host, uri.port]
+      def request_headers(request)
+        request.headers
       end
     end
   end

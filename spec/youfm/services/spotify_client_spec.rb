@@ -3,10 +3,33 @@
 require 'spec_helper'
 
 RSpec.describe YouFM::Services::SpotifyClient do
+  def spotify_client(http_client:, **options)
+    described_class.new(
+      access_token: 'token',
+      base_url: 'https://api.spotify.test/v1',
+      http_client: http_client,
+      **options
+    )
+  end
+
+  def http_client_with(*responses)
+    instance_double(YouFM::Services::PersistentHttpClient).tap do |http_client|
+      allow(http_client).to receive(:request).and_return(*responses)
+    end
+  end
+
+  def http_response(code:, body:, headers: {})
+    instance_double(YouFM::Services::PersistentHttpClient::Response, code: code, body: body).tap do |response|
+      allow(response).to receive(:[]).and_return(nil)
+      headers.each do |key, value|
+        allow(response).to receive(:[]).with(key).and_return(value)
+      end
+    end
+  end
+
   describe '#search_tracks' do
     it 'maps Spotify track payloads into track models' do
-      client = described_class.new(access_token: 'token', base_url: 'https://api.spotify.test/v1')
-      response = instance_double(Net::HTTPResponse, code: '200', body: JSON.dump(
+      response = http_response(code: '200', body: JSON.dump(
         'tracks' => {
           'items' => [
             {
@@ -20,9 +43,8 @@ RSpec.describe YouFM::Services::SpotifyClient do
           ]
         }
       ))
-      http = instance_double(Net::HTTP, request: response)
-
-      allow(Net::HTTP).to receive(:start).and_return(http)
+      http_client = http_client_with(response)
+      client = spotify_client(http_client: http_client)
 
       result = client.search_tracks('track')
 
@@ -31,14 +53,11 @@ RSpec.describe YouFM::Services::SpotifyClient do
     end
 
     it 'retries search without limit when Spotify says the limit is invalid' do
-      client = described_class.new(access_token: 'token', base_url: 'https://api.spotify.test/v1')
-      invalid_response = instance_double(
-        Net::HTTPResponse,
+      invalid_response = http_response(
         code: '400',
         body: JSON.dump('error' => { 'message' => 'Invalid limit' })
       )
-      valid_response = instance_double(
-        Net::HTTPResponse,
+      valid_response = http_response(
         code: '200',
         body: JSON.dump(
           'tracks' => {
@@ -55,10 +74,8 @@ RSpec.describe YouFM::Services::SpotifyClient do
           }
         )
       )
-      http = instance_double(Net::HTTP)
-
-      allow(http).to receive(:request).and_return(invalid_response, valid_response)
-      allow(Net::HTTP).to receive(:start).and_return(http)
+      http_client = http_client_with(invalid_response, valid_response)
+      client = spotify_client(http_client: http_client)
 
       result = client.search_tracks('track')
 
@@ -69,11 +86,9 @@ RSpec.describe YouFM::Services::SpotifyClient do
 
   describe '#current_playback' do
     it 'returns an empty playback state on 204' do
-      client = described_class.new(access_token: 'token', base_url: 'https://api.spotify.test/v1')
-      response = instance_double(Net::HTTPResponse, code: '204', body: '')
-      http = instance_double(Net::HTTP, request: response)
-
-      allow(Net::HTTP).to receive(:start).and_return(http)
+      response = http_response(code: '204', body: '')
+      http_client = http_client_with(response)
+      client = spotify_client(http_client: http_client)
 
       playback = client.current_playback
 
@@ -84,16 +99,13 @@ RSpec.describe YouFM::Services::SpotifyClient do
 
   describe 'rate limiting' do
     it 'raises a rate-limited error with Retry-After seconds from Spotify headers' do
-      client = described_class.new(access_token: 'token', base_url: 'https://api.spotify.test/v1')
-      response = instance_double(
-        Net::HTTPResponse,
+      response = http_response(
         code: '429',
-        body: JSON.dump('error' => { 'message' => 'Too many requests' })
+        body: JSON.dump('error' => { 'message' => 'Too many requests' }),
+        headers: { 'Retry-After' => '17' }
       )
-      allow(response).to receive(:[]).with('Retry-After').and_return('17')
-      http = instance_double(Net::HTTP, request: response)
-
-      allow(Net::HTTP).to receive(:start).and_return(http)
+      http_client = http_client_with(response)
+      client = spotify_client(http_client: http_client)
 
       expect { client.queue }.to raise_error(YouFM::Services::SpotifyClient::RateLimitedError) do |error|
         expect(error.retry_after_seconds).to eq(17)
@@ -102,25 +114,20 @@ RSpec.describe YouFM::Services::SpotifyClient do
     end
 
     it 'blocks all follow-up Spotify requests until Retry-After expires' do
-      client = described_class.new(access_token: 'token', base_url: 'https://api.spotify.test/v1')
-      rate_limited_response = instance_double(
-        Net::HTTPResponse,
+      rate_limited_response = http_response(
         code: '429',
-        body: JSON.dump('error' => { 'message' => 'Too many requests' })
+        body: JSON.dump('error' => { 'message' => 'Too many requests' }),
+        headers: { 'Retry-After' => '17' }
       )
-      success_response = instance_double(
-        Net::HTTPResponse,
+      success_response = http_response(
         code: '200',
         body: JSON.dump('devices' => [])
       )
-      allow(rate_limited_response).to receive(:[]).with('Retry-After').and_return('17')
-      allow(success_response).to receive(:[]).with('Retry-After').and_return(nil)
 
       now = Time.utc(2026, 4, 14, 10, 0, 0)
       allow(Time).to receive(:now).and_return(now)
-      http = instance_double(Net::HTTP)
-      allow(http).to receive(:request).and_return(rate_limited_response, success_response)
-      allow(Net::HTTP).to receive(:start).and_return(http)
+      http_client = http_client_with(rate_limited_response, success_response)
+      client = spotify_client(http_client: http_client)
 
       expect { client.queue }.to raise_error(YouFM::Services::SpotifyClient::RateLimitedError)
       expect { client.available_devices }.to raise_error(YouFM::Services::SpotifyClient::RateLimitedError) do |error|
@@ -131,36 +138,27 @@ RSpec.describe YouFM::Services::SpotifyClient do
       result = client.available_devices
 
       expect(result).to eq([])
-      expect(Net::HTTP).to have_received(:start).once
+      expect(http_client).to have_received(:request).twice
     end
   end
 
   describe 'timeouts' do
-    it 'sets bounded HTTP timeouts and raises a Spotify timeout error' do
-      client = described_class.new(access_token: 'token', base_url: 'https://api.spotify.test/v1')
-      http = instance_double(Net::HTTP)
+    it 'raises a Spotify timeout error' do
+      http_client = instance_double(YouFM::Services::PersistentHttpClient)
 
-      allow(http).to receive(:request).and_raise(Net::ReadTimeout)
-      allow(Net::HTTP).to receive(:start).and_return(http)
+      allow(http_client).to receive(:request).and_raise(HTTPX::TimeoutError.new(1, 'timeout'))
+      client = spotify_client(http_client: http_client)
 
       expect { client.available_devices }.to raise_error(
         YouFM::Services::SpotifyClient::TimeoutError,
         'Spotify request timed out'
-      )
-      expect(Net::HTTP).to have_received(:start).with(
-        'api.spotify.test',
-        443,
-        use_ssl: true,
-        open_timeout: 5,
-        read_timeout: 10
       )
     end
   end
 
   describe '#available_devices' do
     it 'maps Spotify devices into device models' do
-      client = described_class.new(access_token: 'token', base_url: 'https://api.spotify.test/v1')
-      response = instance_double(Net::HTTPResponse, code: '200', body: JSON.dump(
+      response = http_response(code: '200', body: JSON.dump(
         'devices' => [
           {
             'id' => 'device-1',
@@ -171,9 +169,8 @@ RSpec.describe YouFM::Services::SpotifyClient do
           }
         ]
       ))
-      http = instance_double(Net::HTTP, request: response)
-
-      allow(Net::HTTP).to receive(:start).and_return(http)
+      http_client = http_client_with(response)
+      client = spotify_client(http_client: http_client)
 
       result = client.available_devices
 
@@ -184,15 +181,12 @@ RSpec.describe YouFM::Services::SpotifyClient do
 
   describe '#play_track' do
     it 'keeps player 403 errors as playback unavailable errors' do
-      client = described_class.new(access_token: 'token', base_url: 'https://api.spotify.test/v1')
-      response = instance_double(
-        Net::HTTPResponse,
+      response = http_response(
         code: '403',
         body: JSON.dump('error' => { 'message' => 'Premium required' })
       )
-      http = instance_double(Net::HTTP, request: response)
-
-      allow(Net::HTTP).to receive(:start).and_return(http)
+      http_client = http_client_with(response)
+      client = spotify_client(http_client: http_client)
 
       expect { client.play_track('spotify:track:1') }.to raise_error(
         YouFM::Services::SpotifyClient::PlaybackUnavailableError,
@@ -203,8 +197,7 @@ RSpec.describe YouFM::Services::SpotifyClient do
 
   describe '#current_user_playlists' do
     it 'uses items.total when Spotify returns the new playlist shape' do
-      client = described_class.new(access_token: 'token', base_url: 'https://api.spotify.test/v1')
-      response = instance_double(Net::HTTPResponse, code: '200', body: JSON.dump(
+      response = http_response(code: '200', body: JSON.dump(
         'items' => [
           {
             'id' => 'playlist-1',
@@ -216,9 +209,8 @@ RSpec.describe YouFM::Services::SpotifyClient do
           }
         ]
       ))
-      http = instance_double(Net::HTTP, request: response)
-
-      allow(Net::HTTP).to receive(:start).and_return(http)
+      http_client = http_client_with(response)
+      client = spotify_client(http_client: http_client)
 
       result = client.current_user_playlists
 
@@ -230,8 +222,7 @@ RSpec.describe YouFM::Services::SpotifyClient do
 
   describe '#playlist_tracks' do
     it 'maps playlist track items and skips episodes' do
-      client = described_class.new(access_token: 'token', base_url: 'https://api.spotify.test/v1')
-      response = instance_double(Net::HTTPResponse, code: '200', body: JSON.dump(
+      response = http_response(code: '200', body: JSON.dump(
         'items' => [
           {
             'item' => {
@@ -253,9 +244,8 @@ RSpec.describe YouFM::Services::SpotifyClient do
           }
         ]
       ))
-      http = instance_double(Net::HTTP, request: response)
-
-      allow(Net::HTTP).to receive(:start).and_return(http)
+      http_client = http_client_with(response)
+      client = spotify_client(http_client: http_client)
 
       result = client.playlist_tracks('playlist-1')
 
@@ -266,8 +256,7 @@ RSpec.describe YouFM::Services::SpotifyClient do
 
   describe '#playlist_tracks_page' do
     it 'returns one playlist page with has_more flag' do
-      client = described_class.new(access_token: 'token', base_url: 'https://api.spotify.test/v1')
-      response = instance_double(Net::HTTPResponse, code: '200', body: JSON.dump(
+      response = http_response(code: '200', body: JSON.dump(
         'items' => [
           {
             'item' => {
@@ -283,15 +272,14 @@ RSpec.describe YouFM::Services::SpotifyClient do
         ],
         'next' => 'https://api.spotify.test/v1/playlists/playlist-1/items?offset=100&limit=100'
       ))
-      http = instance_double(Net::HTTP, request: response)
-
-      allow(Net::HTTP).to receive(:start).and_return(http)
+      http_client = http_client_with(response)
+      client = spotify_client(http_client: http_client)
 
       result = client.playlist_tracks_page('playlist-1', limit: 100, offset: 0)
 
       expect(result[:has_more]).to be(true)
       expect(result[:tracks].map(&:display_label)).to eq(['Track - Artist'])
-      expect(http).to have_received(:request) do |request|
+      expect(http_client).to have_received(:request) do |request|
         expect(URI.decode_www_form(request.uri.query).to_h).to include(
           'fields' => YouFM::Services::SpotifyClient::PLAYLIST_TRACK_FIELDS
         )
@@ -299,15 +287,12 @@ RSpec.describe YouFM::Services::SpotifyClient do
     end
 
     it 'keeps playlist item 403 errors as generic Spotify errors' do
-      client = described_class.new(access_token: 'token', base_url: 'https://api.spotify.test/v1')
-      response = instance_double(
-        Net::HTTPResponse,
+      response = http_response(
         code: '403',
         body: JSON.dump('error' => { 'message' => 'Insufficient client scope' })
       )
-      http = instance_double(Net::HTTP, request: response)
-
-      allow(Net::HTTP).to receive(:start).and_return(http)
+      http_client = http_client_with(response)
+      client = spotify_client(http_client: http_client)
 
       expect { client.playlist_tracks_page('playlist-1', limit: 100, offset: 0) }.to raise_error(
         YouFM::Services::SpotifyClient::Error,

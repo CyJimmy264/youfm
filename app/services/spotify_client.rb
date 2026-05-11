@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'httpx'
+
 module YouFM
   module Services
     class SpotifyClient
@@ -20,14 +22,14 @@ module YouFM
       end
 
       def initialize(access_token:, base_url: 'https://api.spotify.com/v1', token_store: nil, authenticator: nil,
-                     playlist_cache: nil)
+                     playlist_cache: nil, http_client: nil)
         @access_token = access_token.to_s.strip
         @base_url = base_url
         @token_store = token_store
         @authenticator = authenticator
         @playlist_cache = playlist_cache
         @rate_limited_until = nil
-        @http_client = PersistentHttpClient.new(open_timeout: 5, read_timeout: 10)
+        @http_client = http_client || PersistentHttpClient.new(open_timeout: 5, read_timeout: 10)
       end
 
       def search_tracks(query, limit: 20)
@@ -282,20 +284,18 @@ module YouFM
       end
 
       def get_with_code(path, params = {})
-        request(Net::HTTP::Get.new(build_uri(path, params)))
+        request(HttpRequest.get(build_uri(path, params)))
       end
 
       def put(path, payload, params: {})
         body, = request(
-          Net::HTTP::Put.new(build_uri(path, params)).tap do |request|
-            request.body = JSON.dump(payload)
-          end
+          HttpRequest.put(build_uri(path, params), body: JSON.dump(payload))
         )
         body
       end
 
       def post(path, params = {})
-        body, = request(Net::HTTP::Post.new(build_uri(path, params)))
+        body, = request(HttpRequest.post(build_uri(path, params)))
         body
       end
 
@@ -377,7 +377,7 @@ module YouFM
         @http_client.request(request).tap do |response|
           log_http_request(request, response.code, started_at)
         end
-      rescue Net::OpenTimeout, Net::ReadTimeout
+      rescue HTTPX::TimeoutError, HTTPX::ConnectionError
         log_http_request(request, 'timeout', started_at)
         raise TimeoutError, 'Spotify request timed out'
       end

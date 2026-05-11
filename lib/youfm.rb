@@ -2,7 +2,6 @@
 
 require 'fileutils'
 require 'json'
-require 'net/http'
 require 'qt'
 require 'securerandom'
 require 'socket'

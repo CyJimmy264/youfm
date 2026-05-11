@@ -36,7 +36,7 @@ module YouFM
       HTML
 
       def initialize(client_id:, redirect_uri:, scopes:, accounts_base_url:, token_store:, browser_launcher:,
-                     timeout_seconds: 120)
+                     timeout_seconds: 120, http_client: nil)
         @client_id = client_id.to_s.strip
         @redirect_uri = redirect_uri.to_s.strip
         @scopes = Array(scopes)
@@ -44,6 +44,7 @@ module YouFM
         @token_store = token_store
         @browser_launcher = browser_launcher
         @timeout_seconds = timeout_seconds
+        @http_client = http_client || PersistentHttpClient.new(open_timeout: 5, read_timeout: 10)
       end
 
       def configured?
@@ -75,7 +76,7 @@ module YouFM
       private
 
       attr_reader :client_id, :redirect_uri, :scopes, :accounts_base_url, :token_store, :browser_launcher,
-                  :timeout_seconds
+                  :timeout_seconds, :http_client
 
       def capture_callback!(state:, verifier:)
         redirect = URI.parse(redirect_uri)
@@ -148,13 +149,13 @@ module YouFM
 
       def post_token(params)
         uri = URI.join(accounts_base_url.end_with?('/') ? accounts_base_url : "#{accounts_base_url}/", 'api/token')
-        request = Net::HTTP::Post.new(uri)
-        request['Content-Type'] = 'application/x-www-form-urlencoded'
-        request.body = URI.encode_www_form(params)
+        request = HttpRequest.post(
+          uri,
+          headers: { 'Content-Type' => 'application/x-www-form-urlencoded' },
+          body: URI.encode_www_form(params)
+        )
 
-        response = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https') do |http|
-          http.request(request)
-        end
+        response = http_client.request(request)
 
         raise Error, response.body.to_s if response.code.to_i >= 400
 

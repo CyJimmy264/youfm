@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'net/http'
+require 'httpx'
 require 'json'
 require 'digest/md5'
 require 'time'
@@ -21,15 +21,17 @@ module YouFM
                        '(KHTML, like Gecko) Chrome/123.0 Safari/537.36'
 
       def initialize(api_key:, secret:, session_key: nil, base_url: 'http://ws.audioscrobbler.com/2.0/',
-                     similar_artists_cache: nil, top_tracks_cache: nil)
+                     similar_artists_cache: nil, top_tracks_cache: nil, api_http_client: nil, web_http_client: nil)
         @api_key = api_key
         @secret = secret
         @session_key = session_key
         @base_url = base_url
         @similar_artists_cache = similar_artists_cache
         @top_tracks_cache = top_tracks_cache
-        @api_http_client = PersistentHttpClient.new(open_timeout: HTTP_OPEN_TIMEOUT, read_timeout: HTTP_READ_TIMEOUT)
-        @web_http_client = PersistentHttpClient.new(open_timeout: HTTP_OPEN_TIMEOUT, read_timeout: HTTP_READ_TIMEOUT)
+        @api_http_client = api_http_client ||
+                           PersistentHttpClient.new(open_timeout: HTTP_OPEN_TIMEOUT, read_timeout: HTTP_READ_TIMEOUT)
+        @web_http_client = web_http_client ||
+                           PersistentHttpClient.new(open_timeout: HTTP_OPEN_TIMEOUT, read_timeout: HTTP_READ_TIMEOUT)
       end
 
       SimilarArtist = Struct.new(:name, :match)
@@ -126,12 +128,12 @@ module YouFM
       end
 
       def perform_api_request(uri)
-        request = Net::HTTP::Get.new(uri)
+        request = HttpRequest.get(uri)
         started_at = HttpRequestLogger.monotonic_time
         @api_http_client.request(request).tap do |response|
           log_http_request(uri, response.code, started_at)
         end
-      rescue Net::OpenTimeout, Net::ReadTimeout
+      rescue HTTPX::TimeoutError, HTTPX::ConnectionError
         log_http_request(uri, 'timeout', started_at)
         raise Error, 'Last.fm request timed out'
       end
@@ -222,10 +224,14 @@ module YouFM
       end
 
       def perform_web_request(uri)
-        request = Net::HTTP::Get.new(uri)
-        request['User-Agent'] = WEB_USER_AGENT
-        request['Accept'] = 'text/html,application/xhtml+xml'
-        request['Accept-Language'] = 'en-US,en;q=0.9'
+        request = HttpRequest.get(
+          uri,
+          headers: {
+            'User-Agent' => WEB_USER_AGENT,
+            'Accept' => 'text/html,application/xhtml+xml',
+            'Accept-Language' => 'en-US,en;q=0.9'
+          }
+        )
         started_at = HttpRequestLogger.monotonic_time
 
         @web_http_client.request(request).tap do |response|
