@@ -99,9 +99,16 @@ form { margin: 0; }
   border-radius: 14px;
   color: #d7e2ec;
   background: #0a0f15;
-  font: 13px/1.5 "Iosevka Term", "JetBrains Mono", monospace;
+  font: 11px/1.45 "Iosevka Term", "JetBrains Mono", monospace;
   white-space: pre-wrap;
 }
+
+.log-provider-spotify { color: #62d26f; font-weight: 700; }
+.log-provider-lastfm { color: #e56a8a; font-weight: 700; }
+.log-method { color: #65c7f7; font-weight: 700; }
+.log-status-ok { color: #62d26f; font-weight: 700; }
+.log-status-error { color: #ff6b6b; font-weight: 700; }
+.log-elapsed { color: #f0b35a; font-weight: 700; }
 
 @media (max-width: 640px) {
   main { margin: 20px auto; }

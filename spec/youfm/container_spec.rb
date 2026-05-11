@@ -65,7 +65,8 @@ RSpec.describe YouFM::Container do
       api_key: 'lastfm-key',
       secret: 'lastfm-secret',
       session_key: 'session-key',
-      similar_artists_cache: lastfm_similar_artists_cache
+      similar_artists_cache: lastfm_similar_artists_cache,
+      top_tracks_cache: instance_of(YouFM::Services::LastfmTopTracksCache)
     ).and_return(lastfm_client)
     allow(YouFM::Services::LastfmAuthenticator).to receive(:new).with(
       api_key: 'lastfm-key',

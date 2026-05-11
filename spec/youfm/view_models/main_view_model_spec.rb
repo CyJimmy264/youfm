@@ -906,6 +906,6 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     view_model.refresh_playback
 
     expect(view_model.state.status_message)
-      .to eq('Auto-recommendation skipped: Last.fm/Spotify did not return a suitable track')
+      .to eq('Auto-recommendation not added: Last.fm/Spotify did not return a suitable track')
   end
 end

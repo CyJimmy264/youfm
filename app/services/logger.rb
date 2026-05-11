@@ -6,19 +6,19 @@ module YouFM
   module Services
     class Logger
       class << self
-        def info(message)
-          log(message, stream: $stdout)
+        def info(message, color: nil)
+          log(message, stream: $stdout, color: color)
         end
 
-        def warn(message)
-          log(message, stream: $stderr)
+        def warn(message, color: nil)
+          log(message, stream: $stderr, color: color)
         end
 
         private
 
-        def log(message, stream:)
+        def log(message, stream:, color:)
           line = format_line(message)
-          stream.puts(line)
+          stream.puts(color ? format_line(color) : line)
           LogFile.append_async("#{line}\n")
         rescue StandardError
           nil

@@ -27,6 +27,7 @@ module YouFM
         @authenticator = authenticator
         @playlist_cache = playlist_cache
         @rate_limited_until = nil
+        @http_client = PersistentHttpClient.new(open_timeout: 5, read_timeout: 10)
       end
 
       def search_tracks(query, limit: 20)
@@ -372,18 +373,23 @@ module YouFM
         request['Authorization'] = "Bearer #{token}"
         request['Content-Type'] = 'application/json'
 
-        Services::Logger.info("[youfm] spotify request: #{request.method} #{request.uri}")
-        Net::HTTP.start(
-          request.uri.host,
-          request.uri.port,
-          use_ssl: request.uri.scheme == 'https',
-          open_timeout: 5,
-          read_timeout: 10
-        ) do |http|
-          http.request(request)
+        started_at = HttpRequestLogger.monotonic_time
+        @http_client.request(request).tap do |response|
+          log_http_request(request, response.code, started_at)
         end
       rescue Net::OpenTimeout, Net::ReadTimeout
+        log_http_request(request, 'timeout', started_at)
         raise TimeoutError, 'Spotify request timed out'
+      end
+
+      def log_http_request(request, status, started_at)
+        HttpRequestLogger.log(
+          provider: :spotify,
+          method: request.method,
+          uri: request.uri,
+          status: status,
+          elapsed_ms: HttpRequestLogger.elapsed_ms_since(started_at)
+        )
       end
 
       def playback_error_for(code, body, request)

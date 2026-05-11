@@ -22,7 +22,7 @@ RSpec.describe YouFM::Services::SpotifyClient do
       ))
       http = instance_double(Net::HTTP, request: response)
 
-      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(Net::HTTP).to receive(:start).and_return(http)
 
       result = client.search_tracks('track')
 
@@ -58,7 +58,7 @@ RSpec.describe YouFM::Services::SpotifyClient do
       http = instance_double(Net::HTTP)
 
       allow(http).to receive(:request).and_return(invalid_response, valid_response)
-      allow(Net::HTTP).to receive(:start).twice.and_yield(http)
+      allow(Net::HTTP).to receive(:start).and_return(http)
 
       result = client.search_tracks('track')
 
@@ -73,7 +73,7 @@ RSpec.describe YouFM::Services::SpotifyClient do
       response = instance_double(Net::HTTPResponse, code: '204', body: '')
       http = instance_double(Net::HTTP, request: response)
 
-      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(Net::HTTP).to receive(:start).and_return(http)
 
       playback = client.current_playback
 
@@ -93,7 +93,7 @@ RSpec.describe YouFM::Services::SpotifyClient do
       allow(response).to receive(:[]).with('Retry-After').and_return('17')
       http = instance_double(Net::HTTP, request: response)
 
-      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(Net::HTTP).to receive(:start).and_return(http)
 
       expect { client.queue }.to raise_error(YouFM::Services::SpotifyClient::RateLimitedError) do |error|
         expect(error.retry_after_seconds).to eq(17)
@@ -120,7 +120,7 @@ RSpec.describe YouFM::Services::SpotifyClient do
       allow(Time).to receive(:now).and_return(now)
       http = instance_double(Net::HTTP)
       allow(http).to receive(:request).and_return(rate_limited_response, success_response)
-      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(Net::HTTP).to receive(:start).and_return(http)
 
       expect { client.queue }.to raise_error(YouFM::Services::SpotifyClient::RateLimitedError)
       expect { client.available_devices }.to raise_error(YouFM::Services::SpotifyClient::RateLimitedError) do |error|
@@ -131,7 +131,7 @@ RSpec.describe YouFM::Services::SpotifyClient do
       result = client.available_devices
 
       expect(result).to eq([])
-      expect(Net::HTTP).to have_received(:start).twice
+      expect(Net::HTTP).to have_received(:start).once
     end
   end
 
@@ -141,7 +141,7 @@ RSpec.describe YouFM::Services::SpotifyClient do
       http = instance_double(Net::HTTP)
 
       allow(http).to receive(:request).and_raise(Net::ReadTimeout)
-      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(Net::HTTP).to receive(:start).and_return(http)
 
       expect { client.available_devices }.to raise_error(
         YouFM::Services::SpotifyClient::TimeoutError,
@@ -173,7 +173,7 @@ RSpec.describe YouFM::Services::SpotifyClient do
       ))
       http = instance_double(Net::HTTP, request: response)
 
-      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(Net::HTTP).to receive(:start).and_return(http)
 
       result = client.available_devices
 
@@ -192,7 +192,7 @@ RSpec.describe YouFM::Services::SpotifyClient do
       )
       http = instance_double(Net::HTTP, request: response)
 
-      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(Net::HTTP).to receive(:start).and_return(http)
 
       expect { client.play_track('spotify:track:1') }.to raise_error(
         YouFM::Services::SpotifyClient::PlaybackUnavailableError,
@@ -218,7 +218,7 @@ RSpec.describe YouFM::Services::SpotifyClient do
       ))
       http = instance_double(Net::HTTP, request: response)
 
-      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(Net::HTTP).to receive(:start).and_return(http)
 
       result = client.current_user_playlists
 
@@ -255,7 +255,7 @@ RSpec.describe YouFM::Services::SpotifyClient do
       ))
       http = instance_double(Net::HTTP, request: response)
 
-      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(Net::HTTP).to receive(:start).and_return(http)
 
       result = client.playlist_tracks('playlist-1')
 
@@ -285,7 +285,7 @@ RSpec.describe YouFM::Services::SpotifyClient do
       ))
       http = instance_double(Net::HTTP, request: response)
 
-      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(Net::HTTP).to receive(:start).and_return(http)
 
       result = client.playlist_tracks_page('playlist-1', limit: 100, offset: 0)
 
@@ -307,7 +307,7 @@ RSpec.describe YouFM::Services::SpotifyClient do
       )
       http = instance_double(Net::HTTP, request: response)
 
-      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(Net::HTTP).to receive(:start).and_return(http)
 
       expect { client.playlist_tracks_page('playlist-1', limit: 100, offset: 0) }.to raise_error(
         YouFM::Services::SpotifyClient::Error,

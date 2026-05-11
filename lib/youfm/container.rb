@@ -68,13 +68,15 @@ module YouFM
     def register_lastfm_services
       register(:lastfm_token_store) { Services::LastfmTokenStore.new }
       register(:lastfm_similar_artists_cache) { Services::LastfmSimilarArtistsCache.new }
+      register(:lastfm_top_tracks_cache) { Services::LastfmTopTracksCache.new }
       register(:lastfm_client) do
         session_data = fetch(:lastfm_token_store).load
         Services::LastfmClient.new(
           api_key: config.lastfm_api_key,
           secret: config.lastfm_secret,
           session_key: session_data['key'],
-          similar_artists_cache: fetch(:lastfm_similar_artists_cache)
+          similar_artists_cache: fetch(:lastfm_similar_artists_cache),
+          top_tracks_cache: fetch(:lastfm_top_tracks_cache)
         )
       end
       register(:lastfm_authenticator) do

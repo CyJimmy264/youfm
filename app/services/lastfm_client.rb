@@ -12,6 +12,7 @@ module YouFM
     class LastfmClient
       class Error < StandardError; end
       SIMILAR_ARTISTS_CACHE_TTL = 7 * 24 * 60 * 60
+      TOP_TRACKS_CACHE_TTL = 24 * 60 * 60
       SIMILAR_ARTISTS_API_LIMIT = 100
       LASTFM_WEB_BASE_URL = 'https://www.last.fm'
       HTTP_OPEN_TIMEOUT = 5
@@ -20,12 +21,15 @@ module YouFM
                        '(KHTML, like Gecko) Chrome/123.0 Safari/537.36'
 
       def initialize(api_key:, secret:, session_key: nil, base_url: 'http://ws.audioscrobbler.com/2.0/',
-                     similar_artists_cache: nil)
+                     similar_artists_cache: nil, top_tracks_cache: nil)
         @api_key = api_key
         @secret = secret
         @session_key = session_key
         @base_url = base_url
         @similar_artists_cache = similar_artists_cache
+        @top_tracks_cache = top_tracks_cache
+        @api_http_client = PersistentHttpClient.new(open_timeout: HTTP_OPEN_TIMEOUT, read_timeout: HTTP_READ_TIMEOUT)
+        @web_http_client = PersistentHttpClient.new(open_timeout: HTTP_OPEN_TIMEOUT, read_timeout: HTTP_READ_TIMEOUT)
       end
 
       SimilarArtist = Struct.new(:name, :match)
@@ -68,20 +72,23 @@ module YouFM
       end
 
       def get_top_tracks(artist_name, limit: 10, period: '12month')
+        cached_tracks_payload = top_tracks_cache&.fetch(
+          artist_name,
+          period: period,
+          limit: limit,
+          ttl: TOP_TRACKS_CACHE_TTL
+        )
+        return build_top_tracks(cached_tracks_payload) if cached_tracks_payload
+
         body = get({ method: 'artist.getTopTracks', artist: artist_name, limit: limit, period: period }, signed: true)
-        tracks = body.dig('toptracks', 'track') || []
-        tracks.map do |track_data|
-          TopTrack.new(
-            name: track_data['name'],
-            playcount: track_data['playcount'].to_i,
-            listeners: track_data['listeners'].to_i
-          )
-        end
+        tracks_payload = Array(body.dig('toptracks', 'track'))
+        top_tracks_cache&.save(artist_name, period: period, limit: limit, tracks: tracks_payload)
+        build_top_tracks(tracks_payload)
       end
 
       private
 
-      attr_reader :api_key, :secret, :session_key, :base_url, :similar_artists_cache
+      attr_reader :api_key, :secret, :session_key, :base_url, :similar_artists_cache, :top_tracks_cache
 
       def fetch_similar_artists_via_api(artist_name)
         body = get({ method: 'artist.getSimilar', artist: artist_name }, signed: true)
@@ -93,6 +100,16 @@ module YouFM
           SimilarArtist.new(
             name: artist_data['name'],
             match: artist_data['match'].to_f
+          )
+        end
+      end
+
+      def build_top_tracks(tracks)
+        tracks.map do |track_data|
+          TopTrack.new(
+            name: track_data['name'],
+            playcount: track_data['playcount'].to_i,
+            listeners: track_data['listeners'].to_i
           )
         end
       end
@@ -110,15 +127,13 @@ module YouFM
 
       def perform_api_request(uri)
         request = Net::HTTP::Get.new(uri)
-        Net::HTTP.start(
-          uri.host,
-          uri.port,
-          use_ssl: uri.scheme == 'https',
-          open_timeout: HTTP_OPEN_TIMEOUT,
-          read_timeout: HTTP_READ_TIMEOUT
-        ) do |http|
-          http.request(request)
+        started_at = HttpRequestLogger.monotonic_time
+        @api_http_client.request(request).tap do |response|
+          log_http_request(uri, response.code, started_at)
         end
+      rescue Net::OpenTimeout, Net::ReadTimeout
+        log_http_request(uri, 'timeout', started_at)
+        raise Error, 'Last.fm request timed out'
       end
 
       def sign(params)
@@ -211,16 +226,21 @@ module YouFM
         request['User-Agent'] = WEB_USER_AGENT
         request['Accept'] = 'text/html,application/xhtml+xml'
         request['Accept-Language'] = 'en-US,en;q=0.9'
+        started_at = HttpRequestLogger.monotonic_time
 
-        Net::HTTP.start(
-          uri.host,
-          uri.port,
-          use_ssl: uri.scheme == 'https',
-          open_timeout: HTTP_OPEN_TIMEOUT,
-          read_timeout: HTTP_READ_TIMEOUT
-        ) do |http|
-          http.request(request)
+        @web_http_client.request(request).tap do |response|
+          log_http_request(uri, response.code, started_at)
         end
+      end
+
+      def log_http_request(uri, status, started_at)
+        HttpRequestLogger.log(
+          provider: :lastfm,
+          method: 'GET',
+          uri: uri,
+          status: status,
+          elapsed_ms: HttpRequestLogger.elapsed_ms_since(started_at)
+        )
       end
 
       def similar_artists_web_uri(artist_name, page)

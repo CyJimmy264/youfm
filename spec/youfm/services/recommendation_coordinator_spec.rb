@@ -7,6 +7,11 @@ RSpec.describe YouFM::Services::RecommendationCoordinator do
   let(:source) { instance_double(YouFM::Services::MusicSources::SpotifySource) }
   let(:seed_store) { instance_double(YouFM::Services::RecommendationSeedStore, save: nil) }
 
+  before do
+    allow(YouFM::Services::Logger).to receive(:info)
+    allow(YouFM::Services::Logger).to receive(:warn)
+  end
+
   def build_track(id, title = "Track #{id}")
     YouFM::Models::Track.new(
       id: id,
@@ -33,7 +38,6 @@ RSpec.describe YouFM::Services::RecommendationCoordinator do
       seed_tracks: [build_track('seed', 'Track seed')],
       excluded_track_ids: [],
       playlist_name: 'Daily',
-      queue_tracks: [],
       trigger: :manual,
       append_track: ->(track, seed_label) { appended << [track, seed_label] },
       update_status: ->(message) { updates << message }
@@ -70,50 +74,150 @@ RSpec.describe YouFM::Services::RecommendationCoordinator do
     allow(source).to receive(:add_to_queue)
 
     coordinator = build_coordinator
-    context = enqueue_context(queue_tracks: [recommended_track])
+    context = enqueue_context(excluded_track_ids: [recommended_track.id])
     result = coordinator.enqueue(**context.except(:updates, :appended))
 
-    expect(result).to eq('Recommendation skipped: the candidate is already in the queue')
+    expect(result).to eq('Recommendation not added: the candidate is already in the queue')
     expect(source).not_to have_received(:add_to_queue)
     expect(context[:appended]).to eq([])
   end
 
-  it 'skips concurrent async recommendations' do
-    allow(Thread).to receive(:new).and_return(instance_double(Thread))
-    allow(generator).to receive(:generate_with_seed)
+  it 'retries when generation returns no candidate' do
+    recommended_track = build_track('recommended', 'Recommended')
+    seed_track = build_track('seed', 'Track seed')
+    allow(generator).to receive(:generate_with_seed).and_return(
+      nil,
+      build_recommendation(track: recommended_track, seed_track: seed_track)
+    )
+    allow(source).to receive(:add_to_queue)
 
     coordinator = build_coordinator
     context = enqueue_context
-    coordinator.enqueue_async(**context.except(:updates, :appended))
-    coordinator.enqueue_async(**context.except(:updates, :appended))
-
-    expect(Thread).to have_received(:new).once
-  end
-
-  it 'skips synchronous recommendations while an async recommendation is running' do
-    allow(Thread).to receive(:new).and_return(instance_double(Thread))
-    allow(generator).to receive(:generate_with_seed)
-
-    coordinator = build_coordinator
-    context = enqueue_context
-    coordinator.enqueue_async(**context.except(:updates, :appended))
     result = coordinator.enqueue(**context.except(:updates, :appended))
 
-    expect(result).to eq('Recommendation skipped: another recommendation is already running')
-    expect(generator).not_to have_received(:generate_with_seed)
+    expect(result).to eq('Added recommendation to Spotify queue: Recommended - Artist')
+    expect(source).to have_received(:add_to_queue).with(recommended_track)
+    expect(generator).to have_received(:generate_with_seed).twice
   end
 
-  it 'reports async recommendation failures through status updates' do
-    allow(Thread).to receive(:new).and_wrap_original do |_original, &block|
-      block.call
-      instance_double(Thread)
+  it 'retries duplicate candidates before giving up' do
+    duplicate_track = build_track('duplicate', 'Duplicate')
+    recommended_track = build_track('recommended', 'Recommended')
+    seed_track = build_track('seed', 'Track seed')
+    allow(generator).to receive(:generate_with_seed).and_return(
+      build_recommendation(track: duplicate_track, seed_track: seed_track),
+      build_recommendation(track: recommended_track, seed_track: seed_track)
+    )
+    allow(source).to receive(:add_to_queue)
+
+    coordinator = build_coordinator
+    context = enqueue_context(excluded_track_ids: [duplicate_track.id])
+    result = coordinator.enqueue(**context.except(:updates, :appended))
+
+    expect(result).to eq('Added recommendation to Spotify queue: Recommended - Artist')
+    expect(source).to have_received(:add_to_queue).with(recommended_track)
+  end
+
+  it 'queues concurrent async recommendations' do
+    worker = instance_double(Thread, alive?: true)
+    worker_block = nil
+    allow(Thread).to receive(:new) do |_args, &block|
+      worker_block = block
+      worker
     end
-    allow(generator).to receive(:generate_with_seed).and_raise(YouFM::Services::SpotifyClient::Error, 'Bad gateway.')
+    first_track = build_track('first', 'First')
+    second_track = build_track('second', 'Second')
+    seed_track = build_track('seed', 'Track seed')
+    allow(generator).to receive(:generate_with_seed).and_return(
+      build_recommendation(track: first_track, seed_track: seed_track),
+      build_recommendation(track: second_track, seed_track: seed_track)
+    )
+    allow(source).to receive(:add_to_queue)
 
     coordinator = build_coordinator
     context = enqueue_context
     coordinator.enqueue_async(**context.except(:updates, :appended))
+    coordinator.enqueue_async(**context.except(:updates, :appended))
+    worker_block.call
 
-    expect(context[:updates]).to eq(['Recommendation failed: Bad gateway.'])
+    expect(Thread).to have_received(:new).once
+    expect(source).to have_received(:add_to_queue).with(first_track)
+    expect(source).to have_received(:add_to_queue).with(second_track)
+    expect(context[:appended].map(&:first)).to eq([first_track, second_track])
+  end
+
+  it 'uses current excluded track ids when an async recommendation runs later' do
+    worker = instance_double(Thread, alive?: true)
+    worker_block = nil
+    allow(Thread).to receive(:new) do |_args, &block|
+      worker_block = block
+      worker
+    end
+    excluded_track_ids = []
+    recommended_track = build_track('recommended', 'Recommended')
+    seed_track = build_track('seed', 'Track seed')
+    allow(generator).to receive(:generate_with_seed).and_return(build_recommendation(track: recommended_track,
+                                                                                     seed_track: seed_track))
+    allow(source).to receive(:add_to_queue)
+
+    coordinator = build_coordinator
+    context = enqueue_context(excluded_track_ids: -> { excluded_track_ids })
+    coordinator.enqueue_async(**context.except(:updates, :appended))
+    excluded_track_ids << recommended_track.id
+    worker_block.call
+
+    expect(source).not_to have_received(:add_to_queue)
+    expect(context[:updates]).to eq(['Recommendation not added: the candidate is already in the queue'])
+  end
+
+  it 'retries transient async failures with backoff' do
+    worker = instance_double(Thread, alive?: true)
+    worker_block = nil
+    allow(Thread).to receive(:new) do |_args, &block|
+      worker_block = block
+      worker
+    end
+    recommended_track = build_track('recommended', 'Recommended')
+    seed_track = build_track('seed', 'Track seed')
+    calls = 0
+    allow(generator).to receive(:generate_with_seed) do
+      calls += 1
+      raise YouFM::Services::SpotifyClient::TimeoutError, 'Spotify request timed out' if calls == 1
+
+      build_recommendation(track: recommended_track, seed_track: seed_track)
+    end
+    allow(source).to receive(:add_to_queue)
+
+    coordinator = build_coordinator
+    allow(coordinator).to receive(:sleep).with(5)
+    context = enqueue_context
+    coordinator.enqueue_async(**context.except(:updates, :appended))
+    worker_block.call
+
+    expect(context[:updates]).to eq([
+                                      'Recommendation failed: Spotify request timed out; retrying in 5s',
+                                      'Added recommendation to Spotify queue: Recommended - Artist'
+                                    ])
+    expect(source).to have_received(:add_to_queue).with(recommended_track)
+  end
+
+  it 'reports non-transient async recommendation failures through status updates' do
+    worker = instance_double(Thread, alive?: true)
+    worker_block = nil
+    allow(Thread).to receive(:new) do |_args, &block|
+      worker_block = block
+      worker
+    end
+    allow(generator).to receive(:generate_with_seed).and_raise(
+      YouFM::Services::SpotifyClient::AuthenticationError,
+      'Token expired'
+    )
+
+    coordinator = build_coordinator
+    context = enqueue_context
+    coordinator.enqueue_async(**context.except(:updates, :appended))
+    worker_block.call
+
+    expect(context[:updates]).to eq(['Recommendation failed: Token expired'])
   end
 end

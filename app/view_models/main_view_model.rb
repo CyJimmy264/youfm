@@ -40,6 +40,7 @@ module YouFM
         @queue_mutex = Mutex.new
         @last_playing_track_id = nil
         @recently_played_track_ids = []
+        @recommended_queue_track_ids = []
         @last_recommendation_seed_track_id = nil
         @now_playing_recommendation_seeds = {}
         @next_queue_refresh_at = nil
@@ -544,6 +545,7 @@ module YouFM
 
       def append_recommended_track_to_local_queue(track, seed_label)
         @queue_mutex.synchronize do
+          @recommended_queue_track_ids = ([track.id.to_s] + @recommended_queue_track_ids).uniq
           state.queue_recommendation_seeds = state.queue_recommendation_seeds.merge(track.id.to_s => seed_label.to_s)
           state.queue_tracks = filtered_queue_tracks([*state.queue_tracks, track])
           normalize_selected_queue_index!
@@ -620,7 +622,9 @@ module YouFM
       end
 
       def blocked_recommendation_track_ids
-        (state.queue_tracks.map { |track| track.id.to_s } + @recently_played_track_ids).uniq
+        @queue_mutex.synchronize do
+          (@recommended_queue_track_ids + @recently_played_track_ids).uniq
+        end
       end
 
       def remove_track_from_local_queue(track_id)
@@ -628,6 +632,9 @@ module YouFM
         return if normalized_track_id.empty?
 
         @queue_mutex.synchronize do
+          @recommended_queue_track_ids = @recommended_queue_track_ids.reject do |queued_id|
+            queued_id == normalized_track_id
+          end
           state.queue_tracks = state.queue_tracks.reject { |track| track.id.to_s == normalized_track_id }
           state.queue_recommendation_seeds = state.queue_recommendation_seeds.reject do |track_id, _seed|
             track_id == normalized_track_id
@@ -671,6 +678,7 @@ module YouFM
       def reset_spotify_session_state
         @last_playing_track_id = nil
         @recently_played_track_ids = []
+        @recommended_queue_track_ids = []
         @last_recommendation_seed_track_id = nil
         @now_playing_recommendation_seeds = {}
         @next_queue_refresh_at = nil
@@ -698,9 +706,8 @@ module YouFM
       def recommendation_context(trigger)
         {
           seed_tracks: recommendation_seed_tracks,
-          excluded_track_ids: blocked_recommendation_track_ids,
+          excluded_track_ids: method(:blocked_recommendation_track_ids),
           playlist_name: recommendation_playlist_name,
-          queue_tracks: state.queue_tracks,
           trigger: trigger,
           append_track: method(:append_recommended_track_to_local_queue),
           update_status: method(:update_status)

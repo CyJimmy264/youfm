@@ -36,12 +36,6 @@ module YouFM
         end
 
         nil
-      rescue LastfmClient::Error => e
-        Services::Logger.warn("[youfm] Last.fm API error during recommendation: #{e.message}")
-        nil
-      rescue SpotifyClient::Error => e
-        Services::Logger.warn("[youfm] Spotify API error during recommendation: #{e.message}")
-        nil
       end
 
       private

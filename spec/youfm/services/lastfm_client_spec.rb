@@ -32,7 +32,7 @@ RSpec.describe YouFM::Services::LastfmClient do
       )
 
       http = instance_double(Net::HTTP, request: response)
-      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(Net::HTTP).to receive(:start).and_return(http)
 
       result = client.get_similar_artists('Air')
 
@@ -112,6 +112,35 @@ RSpec.describe YouFM::Services::LastfmClient do
       payload = client.send(:parse_similar_artists_from_html, html, artist_name: 'Air')
 
       expect(payload.map { |artist| artist['name'] }).to eq(%w[Stereolab Broadcast])
+    end
+  end
+
+  describe '#get_top_tracks' do
+    it 'uses cached top tracks without hitting the network' do
+      cache = instance_double(
+        YouFM::Services::LastfmTopTracksCache,
+        fetch: [{ 'name' => 'La femme d’argent', 'playcount' => '100', 'listeners' => '10' }]
+      )
+      client = described_class.new(api_key: 'key', secret: 'secret', top_tracks_cache: cache)
+
+      result = client.get_top_tracks('Air', period: '12month', limit: 20)
+
+      expect(result.map(&:name)).to eq(['La femme d’argent'])
+      expect(cache).to have_received(:fetch).with('Air', period: '12month', limit: 20, ttl: 24 * 60 * 60)
+    end
+
+    it 'fetches and caches top tracks on a cache miss' do
+      cache = instance_double(YouFM::Services::LastfmTopTracksCache, fetch: nil, save: true)
+      client = described_class.new(api_key: 'key', secret: 'secret', top_tracks_cache: cache)
+      tracks = [{ 'name' => 'La femme d’argent', 'playcount' => '100', 'listeners' => '10' }]
+      response = instance_double(Net::HTTPResponse, code: '200', body: JSON.dump('toptracks' => { 'track' => tracks }))
+      http = instance_double(Net::HTTP, request: response)
+      allow(Net::HTTP).to receive(:start).and_return(http)
+
+      result = client.get_top_tracks('Air', period: '12month', limit: 20)
+
+      expect(result.map(&:name)).to eq(['La femme d’argent'])
+      expect(cache).to have_received(:save).with('Air', period: '12month', limit: 20, tracks: tracks)
     end
   end
 end

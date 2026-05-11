@@ -4,8 +4,48 @@ function renderLog(payload) {
   if (!log) return;
 
   if (path && payload.path) path.textContent = payload.path;
-  log.textContent = (payload.lines || ['No log lines yet']).join('\n');
+  log.replaceChildren(...renderLogLines(payload.lines || ['No log lines yet']));
   log.scrollTop = log.scrollHeight;
+}
+
+function renderLogLines(lines) {
+  return lines.flatMap((line, index) => {
+    const fragment = document.createDocumentFragment();
+    appendColoredLogLine(fragment, line);
+    if (index < lines.length - 1) fragment.appendChild(document.createTextNode('\n'));
+    return Array.from(fragment.childNodes);
+  });
+}
+
+function appendColoredLogLine(parent, line) {
+  const httpPattern = /^(\[[^\]]+\]\s+\[youfm\]\s+http\s+)(SPOTIFY|LASTFM)\s+(GET|POST|PUT|DELETE|PATCH)\s+(\S+)\s+(\S+)\s+(.*)$/;
+  const match = String(line).match(httpPattern);
+  if (!match) {
+    parent.appendChild(document.createTextNode(line));
+    return;
+  }
+
+  parent.appendChild(document.createTextNode(match[1]));
+  parent.appendChild(logSpan(`provider-${match[2].toLowerCase()}`, match[2].padEnd(7, ' ')));
+  parent.appendChild(document.createTextNode(' '));
+  parent.appendChild(logSpan('method', match[3].padEnd(6, ' ')));
+  parent.appendChild(document.createTextNode(' '));
+  parent.appendChild(logSpan(statusClass(match[4]), match[4].padStart(4, ' ')));
+  parent.appendChild(document.createTextNode(' '));
+  parent.appendChild(logSpan('elapsed', match[5].padStart(7, ' ')));
+  parent.appendChild(document.createTextNode(` ${match[6]}`));
+}
+
+function logSpan(className, text) {
+  const span = document.createElement('span');
+  span.className = `log-${className}`;
+  span.textContent = text;
+  return span;
+}
+
+function statusClass(status) {
+  const code = Number(status);
+  return Number.isFinite(code) && code >= 200 && code < 400 ? 'status-ok' : 'status-error';
 }
 
 function renderState(payload) {
