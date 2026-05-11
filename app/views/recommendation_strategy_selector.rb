@@ -1,0 +1,76 @@
+# frozen_string_literal: true
+
+module YouFM
+  module Views
+    class RecommendationStrategySelector
+      attr_reader :widget
+
+      def initialize(parent:, strategy_labels:, enabled_names:)
+        @widget = QWidget.new(parent)
+        @strategy_labels = strategy_labels
+        @checkboxes = {}
+        @applying = false
+        build_layout
+        apply_enabled_names(enabled_names)
+      end
+
+      def on_change(&)
+        @on_change = Proc.new(&)
+      end
+
+      def enabled_names
+        checkboxes.filter_map do |name, checkbox|
+          name if checkbox.is_checked
+        end
+      end
+
+      def apply_enabled_names(names)
+        @applying = true
+        enabled = Array(names).map(&:to_sym)
+        checkboxes.each do |name, checkbox|
+          checkbox.checked = enabled.include?(name)
+        end
+      ensure
+        @applying = false
+      end
+
+      private
+
+      attr_reader :strategy_labels, :checkboxes
+
+      def build_layout
+        layout = QHBoxLayout.new(widget)
+        layout.set_contents_margins(0, 0, 0, 0)
+        layout.spacing = 8
+        layout.add_widget(label)
+        strategy_labels.each do |name, text|
+          checkbox = build_checkbox(text)
+          checkboxes[name] = checkbox
+          layout.add_widget(checkbox)
+        end
+      end
+
+      def label
+        QLabel.new(widget).tap do |label|
+          label.object_name = 'status_label'
+          label.text = 'Strategies'
+        end
+      end
+
+      def build_checkbox(text)
+        QCheckBox.new(widget).tap do |checkbox|
+          checkbox.object_name = 'strategy_checkbox'
+          checkbox.text = text
+          checkbox.focus_policy = Qt::NoFocus
+          checkbox.connect('toggled(bool)') { emit_change }
+        end
+      end
+
+      def emit_change
+        return if @applying
+
+        @on_change&.call(enabled_names)
+      end
+    end
+  end
+end

@@ -70,6 +70,14 @@ module YouFM
         recommendation_generator.similar_artist_pool_limit = value
       end
 
+      def enabled_strategy_names
+        recommendation_generator.enabled_strategy_names
+      end
+
+      def enabled_strategy_names=(names)
+        recommendation_generator.enabled_strategy_names = names
+      end
+
       def reset
         worker_mutex.synchronize do
           jobs.clear

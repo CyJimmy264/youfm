@@ -54,12 +54,18 @@ RSpec.describe YouFM::Services::WebUiServer do
       state: state,
       similar_artist_pool_limit: 200,
       minimum_recommended_queue_size: 1,
+      recommendation_strategy_labels: {
+        artist_similar_top_tracks: 'Similar artist top tracks',
+        track_similar: 'Similar tracks'
+      },
+      enabled_recommendation_strategy_names: [:artist_similar_top_tracks],
       toggle_playback: nil,
       skip_to_next: nil,
       generate_recommendation: nil,
       generate_recommendation_async: nil,
       update_similar_artist_pool_limit: 300,
       update_minimum_recommended_queue_size: 2,
+      update_enabled_recommendation_strategy_names: %i[artist_similar_top_tracks track_similar],
       select_device_index: nil,
       activate_selected_device: nil,
       select_playlist_index: nil,
@@ -74,7 +80,8 @@ RSpec.describe YouFM::Services::WebUiServer do
     instance_double(
       YouFM::Services::SettingsStore,
       write_similar_artist_pool_limit: nil,
-      write_minimum_recommended_queue_size: nil
+      write_minimum_recommended_queue_size: nil,
+      write_enabled_recommendation_strategy_names: nil
     )
   end
 
@@ -103,6 +110,15 @@ RSpec.describe YouFM::Services::WebUiServer do
     expect(html).to include('Artist Pool')
     expect(html).to include('Min Queue')
     expect(html).to include('minimum_queue_size')
+  end
+
+  it 'renders recommendation strategy controls' do
+    html = build_server.send(:render_page)
+
+    expect(html).to include('Recommendation Strategies')
+    expect(html).to include('Similar artist top tracks')
+    expect(html).to include('Similar tracks')
+    expect(html).to include('strategy_names[]')
   end
 
   it 'renders device picker controls' do
@@ -217,6 +233,23 @@ RSpec.describe YouFM::Services::WebUiServer do
     expect(settings_store).to have_received(:write_minimum_recommended_queue_size).with(2)
   end
 
+  it 'applies and persists recommendation strategies' do
+    server = build_server
+
+    server.send(
+      :run_action,
+      :apply_recommendation_strategies,
+      { 'strategy_names' => %w[artist_similar_top_tracks track_similar] }
+    )
+
+    expect(view_model).to have_received(:update_enabled_recommendation_strategy_names).with(
+      %w[artist_similar_top_tracks track_similar]
+    )
+    expect(settings_store).to have_received(:write_enabled_recommendation_strategy_names).with(
+      %i[artist_similar_top_tracks track_similar]
+    )
+  end
+
   it 'selects and activates a device' do
     server = build_server
 
@@ -269,9 +302,13 @@ RSpec.describe YouFM::Services::WebUiServer do
         @state = state
         @similar_artist_pool_limit = 200
         @minimum_recommended_queue_size = 1
+        @recommendation_strategy_labels = {}
+        @enabled_recommendation_strategy_names = []
         @refreshed = Queue.new
         @statuses = Queue.new
       end
+
+      attr_reader :recommendation_strategy_labels, :enabled_recommendation_strategy_names
 
       def status=(message)
         statuses << message

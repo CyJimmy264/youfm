@@ -15,6 +15,7 @@ module YouFM
         next: 'Next',
         generate: 'Generate Next',
         apply_numeric_settings: 'Apply Settings',
+        apply_recommendation_strategies: 'Apply Strategies',
         use_device: 'Use Device',
         select_playlist: 'Use Playlist',
         refresh: 'Refresh',
@@ -258,8 +259,16 @@ module YouFM
         minimum_queue_size = log_render_step('minimum_recommended_queue_size') do
           view_model.minimum_recommended_queue_size
         end
+        strategy_labels = log_render_step('recommendation_strategy_labels') do
+          view_model.recommendation_strategy_labels
+        end
+        enabled_strategies = log_render_step('enabled_recommendation_strategy_names') do
+          view_model.enabled_recommendation_strategy_names
+        end
 
-        log_render_step('html') { renderer.render(state:, pool_limit:, minimum_queue_size:) }
+        log_render_step('html') do
+          renderer.render(state:, pool_limit:, minimum_queue_size:, strategy_labels:, enabled_strategies:)
+        end
       end
 
       def renderer
@@ -387,6 +396,11 @@ module YouFM
         settings_store.write_similar_artist_pool_limit(applied_limit) if applied_limit
         applied_queue_size = view_model.update_minimum_recommended_queue_size(params['minimum_queue_size'].to_s)
         settings_store.write_minimum_recommended_queue_size(applied_queue_size) if applied_queue_size
+      end
+
+      def apply_recommendation_strategies_action(params)
+        enabled_strategies = view_model.update_enabled_recommendation_strategy_names(params.fetch('strategy_names', []))
+        settings_store.write_enabled_recommendation_strategy_names(enabled_strategies)
       end
 
       def use_device_action(params)

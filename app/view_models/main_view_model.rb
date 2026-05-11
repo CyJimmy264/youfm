@@ -5,6 +5,10 @@ module YouFM
     class MainViewModel
       PLAYLIST_PAGE_SIZE = 100
       DEFAULT_MINIMUM_RECOMMENDED_QUEUE_SIZE = 1
+      RECOMMENDATION_STRATEGY_LABELS = {
+        artist_similar_top_tracks: 'Similar artist top tracks',
+        track_similar: 'Similar tracks'
+      }.freeze
 
       State = Struct.new(
         :source_name,
@@ -368,6 +372,22 @@ module YouFM
 
       def similar_artist_pool_limit
         recommendation_coordinator.similar_artist_pool_limit
+      end
+
+      def recommendation_strategy_labels
+        RECOMMENDATION_STRATEGY_LABELS
+      end
+
+      def enabled_recommendation_strategy_names
+        recommendation_coordinator.enabled_strategy_names
+      end
+
+      def update_enabled_recommendation_strategy_names(names)
+        recommendation_coordinator.enabled_strategy_names = names
+        enabled_names = enabled_recommendation_strategy_names
+        labels = enabled_names.map { |name| RECOMMENDATION_STRATEGY_LABELS.fetch(name, name.to_s) }
+        update_status("Recommendation strategies enabled: #{labels.empty? ? 'none' : labels.join(', ')}")
+        enabled_names
       end
 
       def apply_similar_artist_pool_limit(value)

@@ -36,6 +36,7 @@ module YouFM
 
       SimilarArtist = Struct.new(:name, :match)
       TopTrack = Struct.new(:name, :playcount, :listeners)
+      SimilarTrack = Struct.new(:name, :artist_name, :match)
 
       def auth_get_token
         get({ method: 'auth.getToken' })
@@ -88,6 +89,11 @@ module YouFM
         build_top_tracks(tracks_payload)
       end
 
+      def get_similar_tracks(artist_name, track_name, limit: 20)
+        body = get({ method: 'track.getSimilar', artist: artist_name, track: track_name, limit: limit }, signed: true)
+        build_similar_tracks(Array(body.dig('similartracks', 'track')))
+      end
+
       private
 
       attr_reader :api_key, :secret, :session_key, :base_url, :similar_artists_cache, :top_tracks_cache
@@ -112,6 +118,16 @@ module YouFM
             name: track_data['name'],
             playcount: track_data['playcount'].to_i,
             listeners: track_data['listeners'].to_i
+          )
+        end
+      end
+
+      def build_similar_tracks(tracks)
+        tracks.map do |track_data|
+          SimilarTrack.new(
+            name: track_data['name'],
+            artist_name: track_data.dig('artist', 'name').to_s,
+            match: track_data['match'].to_f
           )
         end
       end

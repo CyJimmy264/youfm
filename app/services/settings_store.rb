@@ -31,6 +31,14 @@ module YouFM
         write_payload(payload.merge('minimum_recommended_queue_size' => size.to_i))
       end
 
+      def read_enabled_recommendation_strategy_names
+        payload.fetch('enabled_recommendation_strategy_names', nil)
+      end
+
+      def write_enabled_recommendation_strategy_names(names)
+        write_payload(payload.merge('enabled_recommendation_strategy_names' => Array(names).map(&:to_s)))
+      end
+
       private
 
       attr_reader :path

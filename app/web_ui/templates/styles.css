@@ -66,6 +66,16 @@ input { width: 120px; }
 select { min-width: 0; width: 100%; }
 form { margin: 0; }
 .pool { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.strategies-form {
+  display: grid;
+  grid-template-columns: auto minmax(240px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+.strategies-label { color: var(--muted); }
+.strategy-options { display: flex; flex-wrap: wrap; gap: 10px 16px; }
+.checkbox-label { display: inline-flex; gap: 8px; align-items: center; color: var(--text); }
+.checkbox-label input { width: auto; min-height: 0; accent-color: var(--accent); }
 
 .device-form,
 .playlist-form {
@@ -116,6 +126,7 @@ form { margin: 0; }
   .button-row, .pool { align-items: stretch; flex-direction: column; }
   .device-form { grid-template-columns: 1fr; }
   .playlist-form { grid-template-columns: 1fr; }
+  .strategies-form { grid-template-columns: 1fr; }
   .form-summary { grid-column: auto; }
   .log-header { flex-direction: column; }
   button, input, select { width: 100%; }

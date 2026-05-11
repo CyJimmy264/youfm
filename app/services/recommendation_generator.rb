@@ -3,22 +3,42 @@
 module YouFM
   module Services
     class RecommendationGenerator
-      DEFAULT_SIMILAR_ARTIST_POOL_LIMIT = 200
-      SIMILAR_ARTIST_WINDOW_SIZE = 10
-      TOP_TRACK_WINDOW_SIZE = 7
-      TOP_TRACK_ATTEMPTS_PER_ARTIST = 3
+      DEFAULT_SIMILAR_ARTIST_POOL_LIMIT = RecommendationStrategies::ArtistSimilarTopTracks::
+        DEFAULT_SIMILAR_ARTIST_POOL_LIMIT
+      DEFAULT_ENABLED_STRATEGIES = %i[artist_similar_top_tracks].freeze
+      STRATEGY_NAMES = %i[artist_similar_top_tracks track_similar].freeze
       Recommendation = Struct.new(:track, :seed_track)
 
-      def initialize(lastfm_client:, spotify_client:, similar_artist_pool_limit: DEFAULT_SIMILAR_ARTIST_POOL_LIMIT)
-        @lastfm_client = lastfm_client
-        @spotify_client = spotify_client
-        self.similar_artist_pool_limit = similar_artist_pool_limit
+      def initialize(lastfm_client:, spotify_client:, similar_artist_pool_limit: DEFAULT_SIMILAR_ARTIST_POOL_LIMIT,
+                     enabled_strategy_names: DEFAULT_ENABLED_STRATEGIES, random: Random.new)
+        matcher = RecommendationTrackMatcher.new(spotify_client: spotify_client)
+        @strategies = {
+          artist_similar_top_tracks: RecommendationStrategies::ArtistSimilarTopTracks.new(
+            lastfm_client: lastfm_client,
+            matcher: matcher,
+            similar_artist_pool_limit: similar_artist_pool_limit,
+            random: random
+          ),
+          track_similar: RecommendationStrategies::TrackSimilar.new(lastfm_client: lastfm_client, matcher: matcher)
+        }
+        self.enabled_strategy_names = enabled_strategy_names
       end
 
-      attr_reader :similar_artist_pool_limit
+      attr_reader :enabled_strategy_names
+
+      def similar_artist_pool_limit
+        strategies.fetch(:artist_similar_top_tracks).similar_artist_pool_limit
+      end
 
       def similar_artist_pool_limit=(value)
-        @similar_artist_pool_limit = normalize_pool_limit(value)
+        strategies.fetch(:artist_similar_top_tracks).similar_artist_pool_limit = value
+      end
+
+      def enabled_strategy_names=(names)
+        @enabled_strategy_names = Array(names).filter_map do |name|
+          normalized_name = name.to_s.strip.to_sym
+          normalized_name if STRATEGY_NAMES.include?(normalized_name)
+        end.uniq
       end
 
       def generate_from_playlist(seed_tracks, excluded_track_ids: [], playlist_name: nil)
@@ -26,7 +46,7 @@ module YouFM
       end
 
       def generate_with_seed(seed_tracks, excluded_track_ids: [], playlist_name: nil)
-        return nil if seed_tracks.empty?
+        return nil if seed_tracks.empty? || enabled_strategy_names.empty?
 
         blocked_track_ids = excluded_track_ids.map(&:to_s).reject(&:empty?).to_set
 
@@ -40,81 +60,19 @@ module YouFM
 
       private
 
+      attr_reader :strategies
+
       def recommendation_for_seed_track(seed_track, blocked_track_ids, playlist_name)
-        artist_name = seed_track.artists.first
-        return nil unless artist_name
-
-        similar_artists = @lastfm_client.get_similar_artists(artist_name, limit: similar_artist_pool_limit)
-        return nil if similar_artists.empty?
-
-        similar_artists_window(similar_artists).shuffle.each do |similar_artist|
-          recommendation = recommendation_for_similar_artist(
-            similar_artist, blocked_track_ids, seed_track, playlist_name
+        enabled_strategy_names.shuffle.each do |strategy_name|
+          recommendation = strategies.fetch(strategy_name).generate(
+            seed_track: seed_track,
+            blocked_track_ids: blocked_track_ids,
+            playlist_name: playlist_name
           )
           return recommendation if recommendation
         end
 
         nil
-      end
-
-      def recommendation_for_similar_artist(similar_artist, blocked_track_ids, seed_track, playlist_name)
-        top_tracks = @lastfm_client.get_top_tracks(similar_artist.name, period: '12month', limit: 20)
-        return nil if top_tracks.empty?
-
-        top_tracks.shuffle.take([TOP_TRACK_WINDOW_SIZE, TOP_TRACK_ATTEMPTS_PER_ARTIST].min).each do |top_track|
-          candidate = spotify_track_candidate_for(similar_artist.name, top_track.name, blocked_track_ids)
-          next unless candidate
-
-          Services::Logger.info(
-            "[youfm] recommendation generated: playlist=#{playlist_name || 'unknown'} " \
-            "seed=#{seed_track.display_label.inspect} result=#{candidate.display_label.inspect}"
-          )
-          return Recommendation.new(track: candidate, seed_track: seed_track)
-        end
-
-        nil
-      end
-
-      def spotify_track_candidate_for(artist_name, track_name, blocked_track_ids)
-        query = "#{track_name} artist:#{artist_name}"
-        spotify_tracks = @spotify_client.search_tracks(query, limit: 10)
-        spotify_tracks.find do |track|
-          next false if blocked_track_ids.include?(track.id.to_s)
-
-          spotify_track_matches?(track, generated_artist_name: artist_name, generated_title: track_name)
-        end
-      end
-
-      def similar_artists_window(similar_artists)
-        window_size = [SIMILAR_ARTIST_WINDOW_SIZE, similar_artists.length].min
-        offset = rand(similar_artists.length).floor
-        window = similar_artists.rotate(offset).first(window_size)
-        Services::Logger.info(
-          "[youfm] recommendation similar artists: total=#{similar_artists.length} " \
-          "pool_limit=#{similar_artist_pool_limit} offset=#{offset} window=#{window.map(&:name).join(' | ')}"
-        )
-        window
-      end
-
-      def spotify_track_matches?(track, generated_artist_name:, generated_title:)
-        spotify_artist = normalize_text(track.artists.first)
-        spotify_title = normalize_text(track.title)
-        artist_name = normalize_text(generated_artist_name)
-        title = normalize_text(generated_title)
-
-        (spotify_artist.include?(artist_name) || artist_name.include?(spotify_artist)) &&
-          (spotify_title.include?(title) || title.include?(spotify_title))
-      end
-
-      def normalize_text(value)
-        value.to_s.downcase.gsub(/(remastered(\s\d+)*|the)/, ' ').gsub(/[^a-z0-9]+/, ' ').strip
-      end
-
-      def normalize_pool_limit(value)
-        parsed = Integer(value, exception: false)
-        return DEFAULT_SIMILAR_ARTIST_POOL_LIMIT if parsed.nil? || parsed <= 0
-
-        parsed
       end
     end
   end

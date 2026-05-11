@@ -8,11 +8,13 @@ module YouFM
     class Renderer
       TEMPLATE_DIR = File.expand_path('templates', __dir__)
 
-      def render(state:, pool_limit:, minimum_queue_size:)
+      def render(state:, pool_limit:, minimum_queue_size:, strategy_labels:, enabled_strategies:)
         TemplateContext.new(
           state: state,
           pool_limit: pool_limit,
           minimum_queue_size: minimum_queue_size,
+          strategy_labels: strategy_labels,
+          enabled_strategies: enabled_strategies,
           stylesheet: stylesheet,
           javascript: javascript
         ).render(template)
@@ -33,15 +35,19 @@ module YouFM
       end
 
       class TemplateContext
-        def initialize(state:, pool_limit:, minimum_queue_size:, stylesheet:, javascript:)
+        def initialize(state:, pool_limit:, minimum_queue_size:, strategy_labels:, enabled_strategies:, stylesheet:,
+                       javascript:)
           @state = state
           @pool_limit = pool_limit
           @minimum_queue_size = minimum_queue_size
+          @strategy_labels = strategy_labels
+          @enabled_strategies = enabled_strategies
           @stylesheet = stylesheet
           @javascript = javascript
         end
 
-        attr_reader :state, :pool_limit, :minimum_queue_size, :stylesheet, :javascript
+        attr_reader :state, :pool_limit, :minimum_queue_size, :strategy_labels, :enabled_strategies, :stylesheet,
+                    :javascript
 
         def render(template)
           template.result(binding)
@@ -107,6 +113,27 @@ module YouFM
             <form method="post" action="/action">
               <input type="hidden" name="name" value="#{escape(name)}">
               <button#{button_class} type="submit">#{escape(label)}</button>
+            </form>
+          HTML
+        end
+
+        def recommendation_strategies_form
+          checkboxes = strategy_labels.map do |name, label|
+            checked = enabled_strategies.include?(name) ? ' checked' : ''
+            <<~HTML
+              <label class="checkbox-label">
+                <input type="checkbox" name="strategy_names[]" value="#{escape(name)}"#{checked}>
+                <span>#{escape(label)}</span>
+              </label>
+            HTML
+          end.join
+
+          <<~HTML
+            <form class="strategies-form" method="post" action="/action">
+              <input type="hidden" name="name" value="apply_recommendation_strategies">
+              <div class="strategies-label">Recommendation Strategies</div>
+              <div class="strategy-options">#{checkboxes}</div>
+              <button type="submit">Apply</button>
             </form>
           HTML
         end

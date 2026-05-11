@@ -33,6 +33,26 @@ module YouFM
             color: #f4f6f8;
           }
 
+          QCheckBox#strategy_checkbox {
+            color: #dbe3ec;
+            spacing: 6px;
+          }
+
+          QCheckBox#strategy_checkbox::indicator {
+            width: 14px;
+            height: 14px;
+          }
+
+          QCheckBox#strategy_checkbox::indicator:checked {
+            background: #1db954;
+            border: 1px solid #24c95f;
+          }
+
+          QCheckBox#strategy_checkbox::indicator:unchecked {
+            background: #1b1f27;
+            border: 1px solid #2b3340;
+          }
+
           QPushButton {
             background: #273043;
             color: #f7fbff;
@@ -207,6 +227,26 @@ module YouFM
             border-radius: 10px;
             padding: 10px 12px;
             color: #1a202a;
+          }
+
+          QCheckBox#strategy_checkbox {
+            color: #1a202a;
+            spacing: 6px;
+          }
+
+          QCheckBox#strategy_checkbox::indicator {
+            width: 14px;
+            height: 14px;
+          }
+
+          QCheckBox#strategy_checkbox::indicator:checked {
+            background: #257a46;
+            border: 1px solid #257a46;
+          }
+
+          QCheckBox#strategy_checkbox::indicator:unchecked {
+            background: #fffdf8;
+            border: 1px solid #d4c9b7;
           }
 
           QPushButton {

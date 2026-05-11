@@ -17,7 +17,8 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
   let(:recommendation_generator) do
     instance_double(
       YouFM::Services::RecommendationGenerator,
-      similar_artist_pool_limit: 200
+      similar_artist_pool_limit: 200,
+      enabled_strategy_names: [:artist_similar_top_tracks]
     )
   end
   let(:recommendation_coordinator) do
@@ -123,6 +124,21 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     expect(result).to eq(350)
     expect(recommendation_generator).to have_received(:similar_artist_pool_limit=).with(350)
     expect(view_model.state.status_message).to eq('Similar artist pool limit set to 350')
+  end
+
+  it 'updates enabled recommendation strategies through the recommendation generator' do
+    allow(recommendation_generator).to receive(:enabled_strategy_names=) do |names|
+      allow(recommendation_generator).to receive(:enabled_strategy_names).and_return(names.map(&:to_sym))
+    end
+
+    view_model = build_view_model
+    result = view_model.update_enabled_recommendation_strategy_names(%w[artist_similar_top_tracks track_similar])
+
+    expect(result).to eq(%i[artist_similar_top_tracks track_similar])
+    expect(recommendation_generator).to have_received(:enabled_strategy_names=).with(
+      %w[artist_similar_top_tracks track_similar]
+    )
+    expect(view_model.state.status_message).to include('Similar artist top tracks, Similar tracks')
   end
 
   it 'updates the minimum recommended queue size' do

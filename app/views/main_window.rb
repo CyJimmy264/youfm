@@ -26,6 +26,7 @@ module YouFM
         build_window
         bind_events
         apply_saved_numeric_settings
+        apply_saved_recommendation_strategies
         view_model.bootstrap
         render_full
         @last_seen_state_revision = view_model.revision
@@ -42,7 +43,8 @@ module YouFM
                   :device_picker, :status_label, :auth_label, :lastfm_auth_label, :device_label, :now_playing_label,
                   :recommendation_seed_label, :toggle_button, :theme_button, :connect_button, :disconnect_button,
                   :connect_lastfm_button, :disconnect_lastfm_button, :tracks_panel, :next_button,
-                  :similar_artist_pool_limit_input, :minimum_recommended_queue_size_input
+                  :similar_artist_pool_limit_input, :minimum_recommended_queue_size_input,
+                  :recommendation_strategy_selector
 
       def build_window
         @window = QWidget.new do |widget|
@@ -134,6 +136,7 @@ module YouFM
         QHBoxLayout.new.tap do |layout|
           add_playback_controls(layout)
           add_numeric_settings_controls(layout)
+          add_recommendation_strategy_controls(layout)
           add_secondary_controls(layout)
 
           layout.add_stretch(1)
@@ -179,6 +182,18 @@ module YouFM
         apply_numeric_settings_button = build_button(window, 'ghost_button', 'Apply')
         apply_numeric_settings_button.connect('clicked') { |_| handle_apply_numeric_settings }
         layout.add_widget(apply_numeric_settings_button)
+      end
+
+      def add_recommendation_strategy_controls(layout)
+        @recommendation_strategy_selector = RecommendationStrategySelector.new(
+          parent: window,
+          strategy_labels: view_model.recommendation_strategy_labels,
+          enabled_names: view_model.enabled_recommendation_strategy_names
+        )
+        recommendation_strategy_selector.on_change do |enabled_names|
+          handle_recommendation_strategy_toggle(enabled_names)
+        end
+        layout.add_widget(recommendation_strategy_selector.widget)
       end
 
       def add_secondary_controls(layout)
@@ -442,6 +457,14 @@ module YouFM
         Services::Logger.warn("[youfm] save numeric settings failed: #{e.class}: #{e.message}")
       end
 
+      def handle_recommendation_strategy_toggle(enabled_names)
+        applied_names = view_model.update_enabled_recommendation_strategy_names(enabled_names)
+        settings_store.write_enabled_recommendation_strategy_names(applied_names)
+        render_status
+      rescue StandardError => e
+        Services::Logger.warn("[youfm] save recommendation strategies failed: #{e.class}: #{e.message}")
+      end
+
       def handle_refresh
         force_active_playback_polling!
         view_model.refresh_playback
@@ -565,6 +588,14 @@ module YouFM
         Services::Logger.warn("[youfm] load numeric settings failed: #{e.class}: #{e.message}")
         similar_artist_pool_limit_input.text = view_model.similar_artist_pool_limit.to_s
         minimum_recommended_queue_size_input.text = view_model.minimum_recommended_queue_size.to_s
+      end
+
+      def apply_saved_recommendation_strategies
+        saved_names = settings_store.read_enabled_recommendation_strategy_names
+        view_model.update_enabled_recommendation_strategy_names(saved_names) if saved_names
+        recommendation_strategy_selector.apply_enabled_names(view_model.enabled_recommendation_strategy_names)
+      rescue StandardError => e
+        Services::Logger.warn("[youfm] load recommendation strategies failed: #{e.class}: #{e.message}")
       end
 
       def render_full
