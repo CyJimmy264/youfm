@@ -11,15 +11,6 @@
   - При добавлении recommended любым из способов, проверять, если треков в очереди меньше параметра, то запускать генерацию ещё раз
   - Под числовые параметры (сейчас есть только один Artist Pool) выделить отдельный блок UI и им всем можно общую кнопку apply. За исключением числовых параметров для стратегий генерации треков.
 
-
-- Делать ретраи, до трёх раз на запрос, который валится с такими ошибками
-```
-  [2026-05-11T23:36:32+05:00] [youfm] recommendation generated: playlist=RockLove seed="The Road to Babylon - Manfred Mann's Earth Band" result="All Shook Up - Suzi Quatro"
-  [2026-05-11T23:36:42+05:00] [youfm] status: Recommendation failed: undefined method '*' for nil
-  [2026-05-11T23:36:43+05:00] [youfm] recommendation failed: NoMethodError: undefined method '*' for nil
-  [2026-05-11T23:36:52+05:00] [youfm] status: Playback refresh failed: undefined method '*' for nil
-```
-
 - Добавить возможность разных стратегий генераций треков
   - Включать и выключать каждую стратегию можно чекбоксом в отдельном блоке UI
   - Сейчас есть только одна стратегия через топ треки рекомендованных артистов по сиду который берётся из нашего списка Tracks
