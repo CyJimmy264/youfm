@@ -4,6 +4,7 @@ module YouFM
   module ViewModels
     class MainViewModel
       PLAYLIST_PAGE_SIZE = 100
+      DEFAULT_MINIMUM_RECOMMENDED_QUEUE_SIZE = 1
 
       State = Struct.new(
         :source_name,
@@ -32,15 +33,14 @@ module YouFM
         :playing
       )
 
-      def initialize(source:, recommendation_coordinator:, recommendation_seed_store:, lastfm_authenticator:)
+      def initialize(source:, recommendation_coordinator:, recommendation_seed_store:, lastfm_authenticator:,
+                     recommended_queue_store: nil)
         @source = source
         @recommendation_coordinator = recommendation_coordinator
         @recommendation_seed_store = recommendation_seed_store
         @lastfm_authenticator = lastfm_authenticator
-        @queue_mutex = Mutex.new
         @last_playing_track_id = nil
-        @recently_played_track_ids = []
-        @recommended_queue_track_ids = []
+        @minimum_recommended_queue_size = DEFAULT_MINIMUM_RECOMMENDED_QUEUE_SIZE
         @last_recommendation_seed_track_id = nil
         @now_playing_recommendation_seeds = {}
         @next_queue_refresh_at = nil
@@ -71,6 +71,7 @@ module YouFM
           selected_queue_recommendation_seed: 'None',
           playing: false
         )
+        @recommended_queue = RecommendedQueue.new(state: state, store: recommended_queue_store)
         @playlist_tracks_loader = PlaylistTracksLoader.new(
           state: state,
           source: source,
@@ -80,7 +81,7 @@ module YouFM
         )
       end
 
-      attr_reader :state
+      attr_reader :state, :minimum_recommended_queue_size
 
       def revision
         @state_revision_mutex.synchronize { @state_revision }
@@ -385,6 +386,21 @@ module YouFM
         parsed
       end
 
+      def apply_minimum_recommended_queue_size(value)
+        parsed = normalize_positive_integer(value)
+        return nil unless parsed
+
+        @minimum_recommended_queue_size = parsed
+      end
+
+      def update_minimum_recommended_queue_size(value)
+        parsed = apply_minimum_recommended_queue_size(value)
+        return update_status('Minimum recommended queue size must be a positive integer') unless parsed
+
+        update_status("Minimum recommended queue size set to #{parsed}")
+        parsed
+      end
+
       def status=(message)
         update_status(message)
       end
@@ -400,7 +416,7 @@ module YouFM
       private
 
       attr_reader :source, :recommendation_coordinator, :recommendation_seed_store, :lastfm_authenticator,
-                  :playlist_tracks_loader
+                  :playlist_tracks_loader, :recommended_queue
 
       def initialize_state_notifier
         @state_revision_mutex = Mutex.new
@@ -544,13 +560,8 @@ module YouFM
       end
 
       def append_recommended_track_to_local_queue(track, seed_label)
-        @queue_mutex.synchronize do
-          @recommended_queue_track_ids = ([track.id.to_s] + @recommended_queue_track_ids).uniq
-          state.queue_recommendation_seeds = state.queue_recommendation_seeds.merge(track.id.to_s => seed_label.to_s)
-          state.queue_tracks = filtered_queue_tracks([*state.queue_tracks, track])
-          normalize_selected_queue_index!
-          update_selected_queue_recommendation_seed
-        end
+        queue_size = recommended_queue.append(track, seed_label)
+        enqueue_recommendation_async(trigger: :queue_fill) if queue_size < minimum_recommended_queue_size
       end
 
       def recommendation_seed_tracks
@@ -608,87 +619,35 @@ module YouFM
         return if normalized_track_id.empty?
 
         @last_playing_track_id = normalized_track_id
-        @recently_played_track_ids = ([normalized_track_id] + @recently_played_track_ids).uniq.take(5)
-      end
-
-      def filtered_queue_tracks(tracks)
-        blocked_track_ids = @recently_played_track_ids.dup
-        tracks.reject { |track| blocked_track_ids.include?(track.id.to_s) }
+        recommended_queue.remember_playing_track(normalized_track_id)
       end
 
       def remember_now_playing_recommendation_seed(track_id)
-        seed = state.queue_recommendation_seeds[track_id]
-        @now_playing_recommendation_seeds[track_id] = seed if seed
+        recommended_queue.remember_now_playing_seed(track_id, @now_playing_recommendation_seeds)
       end
 
       def blocked_recommendation_track_ids
-        @queue_mutex.synchronize do
-          (@recommended_queue_track_ids + @recently_played_track_ids).uniq
-        end
+        recommended_queue.blocked_track_ids
       end
 
       def remove_track_from_local_queue(track_id)
-        normalized_track_id = track_id.to_s
-        return if normalized_track_id.empty?
-
-        @queue_mutex.synchronize do
-          @recommended_queue_track_ids = @recommended_queue_track_ids.reject do |queued_id|
-            queued_id == normalized_track_id
-          end
-          state.queue_tracks = state.queue_tracks.reject { |track| track.id.to_s == normalized_track_id }
-          state.queue_recommendation_seeds = state.queue_recommendation_seeds.reject do |track_id, _seed|
-            track_id == normalized_track_id
-          end
-          normalize_selected_queue_index!
-          update_selected_queue_recommendation_seed
-        end
-      end
-
-      def normalize_selected_queue_index!
-        state.selected_queue_index =
-          if state.queue_tracks.empty?
-            nil
-          elsif state.selected_queue_index.nil? || state.selected_queue_index >= state.queue_tracks.length
-            0
-          else
-            state.selected_queue_index
-          end
+        recommended_queue.remove(track_id)
       end
 
       def refresh_queue_tracks!
-        @queue_mutex.synchronize do
-          spotify_queue_tracks = filtered_queue_tracks(source.queue)
-          sync_local_queue_with_spotify_queue!(spotify_queue_tracks)
-          retain_queue_recommendation_seeds!
-          normalize_selected_queue_index!
-        end
-      end
-
-      def sync_local_queue_with_spotify_queue!(spotify_queue_tracks)
-        spotify_tracks_by_id = spotify_queue_tracks.to_h { |track| [track.id.to_s, track] }
-        @recommended_queue_track_ids &= spotify_tracks_by_id.keys
-        state.queue_tracks = @recommended_queue_track_ids.filter_map { |track_id| spotify_tracks_by_id[track_id] }
-      end
-
-      def retain_queue_recommendation_seeds!
-        visible_track_ids = state.queue_tracks.map { |track| track.id.to_s }
-        state.queue_recommendation_seeds = state.queue_recommendation_seeds.slice(*visible_track_ids)
-        update_selected_queue_recommendation_seed
+        recommended_queue.sync(source.queue)
       end
 
       def update_selected_queue_recommendation_seed
-        track = selected_queued_track
-        seed = track && state.queue_recommendation_seeds[track.id.to_s]
-        state.selected_queue_recommendation_seed = seed.to_s.empty? ? 'None' : seed
+        recommended_queue.update_selected_seed!
       end
 
       def reset_spotify_session_state
         @last_playing_track_id = nil
-        @recently_played_track_ids = []
-        @recommended_queue_track_ids = []
         @last_recommendation_seed_track_id = nil
         @now_playing_recommendation_seeds = {}
         @next_queue_refresh_at = nil
+        recommended_queue.clear
         playlist_tracks_loader.reset
       end
 
@@ -740,6 +699,10 @@ module YouFM
       end
 
       def normalize_similar_artist_pool_limit(value)
+        normalize_positive_integer(value)
+      end
+
+      def normalize_positive_integer(value)
         parsed = Integer(value, exception: false)
         return nil if parsed.nil? || parsed <= 0
 

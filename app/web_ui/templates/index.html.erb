@@ -27,9 +27,11 @@
           <%= action_form('sync_library', 'Sync Library') %>
         </div>
         <form class="pool" method="post" action="/action">
-          <input type="hidden" name="name" value="apply_pool">
+          <input type="hidden" name="name" value="apply_numeric_settings">
           <label for="pool_limit">Artist Pool</label>
           <input id="pool_limit" name="pool_limit" value="<%= escape(pool_limit) %>">
+          <label for="minimum_queue_size">Min Queue</label>
+          <input id="minimum_queue_size" name="minimum_queue_size" value="<%= escape(minimum_queue_size) %>">
           <button type="submit">Apply</button>
         </form>
       </div>

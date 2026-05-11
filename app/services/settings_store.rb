@@ -23,6 +23,14 @@ module YouFM
         write_payload(payload.merge('similar_artist_pool_limit' => limit.to_i))
       end
 
+      def read_minimum_recommended_queue_size
+        payload.fetch('minimum_recommended_queue_size', nil)
+      end
+
+      def write_minimum_recommended_queue_size(size)
+        write_payload(payload.merge('minimum_recommended_queue_size' => size.to_i))
+      end
+
       private
 
       attr_reader :path

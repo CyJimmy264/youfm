@@ -14,7 +14,7 @@ module YouFM
         toggle: 'Play/Pause',
         next: 'Next',
         generate: 'Generate Next',
-        apply_pool: 'Apply Artist Pool',
+        apply_numeric_settings: 'Apply Settings',
         use_device: 'Use Device',
         select_playlist: 'Use Playlist',
         refresh: 'Refresh',
@@ -255,8 +255,11 @@ module YouFM
       def render_page
         state = log_render_step('state') { view_model.state }
         pool_limit = log_render_step('similar_artist_pool_limit') { view_model.similar_artist_pool_limit }
+        minimum_queue_size = log_render_step('minimum_recommended_queue_size') do
+          view_model.minimum_recommended_queue_size
+        end
 
-        log_render_step('html') { renderer.render(state:, pool_limit:) }
+        log_render_step('html') { renderer.render(state:, pool_limit:, minimum_queue_size:) }
       end
 
       def renderer
@@ -379,9 +382,11 @@ module YouFM
         view_model.generate_recommendation_async
       end
 
-      def apply_pool_action(params)
+      def apply_numeric_settings_action(params)
         applied_limit = view_model.update_similar_artist_pool_limit(params['pool_limit'].to_s)
         settings_store.write_similar_artist_pool_limit(applied_limit) if applied_limit
+        applied_queue_size = view_model.update_minimum_recommended_queue_size(params['minimum_queue_size'].to_s)
+        settings_store.write_minimum_recommended_queue_size(applied_queue_size) if applied_queue_size
       end
 
       def use_device_action(params)

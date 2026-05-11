@@ -53,11 +53,13 @@ RSpec.describe YouFM::Services::WebUiServer do
       YouFM::ViewModels::MainViewModel,
       state: state,
       similar_artist_pool_limit: 200,
+      minimum_recommended_queue_size: 1,
       toggle_playback: nil,
       skip_to_next: nil,
       generate_recommendation: nil,
       generate_recommendation_async: nil,
       update_similar_artist_pool_limit: 300,
+      update_minimum_recommended_queue_size: 2,
       select_device_index: nil,
       activate_selected_device: nil,
       select_playlist_index: nil,
@@ -68,7 +70,13 @@ RSpec.describe YouFM::Services::WebUiServer do
       wait_for_revision: 7
     )
   end
-  let(:settings_store) { instance_double(YouFM::Services::SettingsStore, write_similar_artist_pool_limit: nil) }
+  let(:settings_store) do
+    instance_double(
+      YouFM::Services::SettingsStore,
+      write_similar_artist_pool_limit: nil,
+      write_minimum_recommended_queue_size: nil
+    )
+  end
 
   def build_server
     described_class.new(view_model: view_model, settings_store: settings_store)
@@ -87,6 +95,14 @@ RSpec.describe YouFM::Services::WebUiServer do
     expect(html).to include('Artist Pool')
     expect(html).to include('Sync Library')
     expect(html).to include('Playing: Track - Artist')
+  end
+
+  it 'renders numeric settings controls' do
+    html = build_server.send(:render_page)
+
+    expect(html).to include('Artist Pool')
+    expect(html).to include('Min Queue')
+    expect(html).to include('minimum_queue_size')
   end
 
   it 'renders device picker controls' do
@@ -190,13 +206,15 @@ RSpec.describe YouFM::Services::WebUiServer do
     expect(view_model).to have_received(:refresh_library)
   end
 
-  it 'applies and persists artist pool limit' do
+  it 'applies and persists numeric settings' do
     server = build_server
 
-    server.send(:run_action, :apply_pool, { 'pool_limit' => '300' })
+    server.send(:run_action, :apply_numeric_settings, { 'pool_limit' => '300', 'minimum_queue_size' => '2' })
 
     expect(view_model).to have_received(:update_similar_artist_pool_limit).with('300')
     expect(settings_store).to have_received(:write_similar_artist_pool_limit).with(300)
+    expect(view_model).to have_received(:update_minimum_recommended_queue_size).with('2')
+    expect(settings_store).to have_received(:write_minimum_recommended_queue_size).with(2)
   end
 
   it 'selects and activates a device' do
@@ -245,11 +263,12 @@ RSpec.describe YouFM::Services::WebUiServer do
 
   it 'processes queued actions with a worker' do
     fake_view_model = Class.new do
-      attr_reader :state, :similar_artist_pool_limit, :refreshed, :statuses
+      attr_reader :state, :similar_artist_pool_limit, :minimum_recommended_queue_size, :refreshed, :statuses
 
       def initialize(state)
         @state = state
         @similar_artist_pool_limit = 200
+        @minimum_recommended_queue_size = 1
         @refreshed = Queue.new
         @statuses = Queue.new
       end

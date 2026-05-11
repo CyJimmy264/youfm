@@ -8,10 +8,11 @@ module YouFM
     class Renderer
       TEMPLATE_DIR = File.expand_path('templates', __dir__)
 
-      def render(state:, pool_limit:)
+      def render(state:, pool_limit:, minimum_queue_size:)
         TemplateContext.new(
           state: state,
           pool_limit: pool_limit,
+          minimum_queue_size: minimum_queue_size,
           stylesheet: stylesheet,
           javascript: javascript
         ).render(template)
@@ -32,14 +33,15 @@ module YouFM
       end
 
       class TemplateContext
-        def initialize(state:, pool_limit:, stylesheet:, javascript:)
+        def initialize(state:, pool_limit:, minimum_queue_size:, stylesheet:, javascript:)
           @state = state
           @pool_limit = pool_limit
+          @minimum_queue_size = minimum_queue_size
           @stylesheet = stylesheet
           @javascript = javascript
         end
 
-        attr_reader :state, :pool_limit, :stylesheet, :javascript
+        attr_reader :state, :pool_limit, :minimum_queue_size, :stylesheet, :javascript
 
         def render(template)
           template.result(binding)

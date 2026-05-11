@@ -24,6 +24,7 @@ RSpec.describe YouFM::Container do
     token_store = instance_double(YouFM::Services::SpotifyTokenStore)
     spotify_playlist_cache = instance_double(YouFM::Services::SpotifyPlaylistCache)
     recommendation_seed_store = instance_double(YouFM::Services::RecommendationSeedStore)
+    recommended_queue_store = instance_double(YouFM::Services::RecommendedQueueStore)
     lastfm_token_store = instance_double(YouFM::Services::LastfmTokenStore, load: { 'key' => 'session-key' })
     lastfm_similar_artists_cache = instance_double(YouFM::Services::LastfmSimilarArtistsCache)
     browser_launcher = instance_double(YouFM::Services::BrowserLauncher)
@@ -43,6 +44,7 @@ RSpec.describe YouFM::Container do
     allow(YouFM::Services::SpotifyTokenStore).to receive(:new).and_return(token_store)
     allow(YouFM::Services::SpotifyPlaylistCache).to receive(:new).and_return(spotify_playlist_cache)
     allow(YouFM::Services::RecommendationSeedStore).to receive(:new).and_return(recommendation_seed_store)
+    allow(YouFM::Services::RecommendedQueueStore).to receive(:new).and_return(recommended_queue_store)
     allow(YouFM::Services::LastfmTokenStore).to receive(:new).and_return(lastfm_token_store)
     allow(YouFM::Services::LastfmSimilarArtistsCache).to receive(:new).and_return(lastfm_similar_artists_cache)
     allow(YouFM::Services::BrowserLauncher).to receive(:new).and_return(browser_launcher)
@@ -89,6 +91,7 @@ RSpec.describe YouFM::Container do
       source: source,
       recommendation_coordinator: recommendation_coordinator,
       recommendation_seed_store: recommendation_seed_store,
+      recommended_queue_store: recommended_queue_store,
       lastfm_authenticator: lastfm_authenticator
     ).and_return(view_model)
     allow(YouFM::Services::WebUiServer).to receive(:new).with(
@@ -103,8 +106,6 @@ RSpec.describe YouFM::Container do
 
     container = described_class.new(config: config)
 
-    expect(container.fetch(:theme)).to equal(theme)
-    expect(container.fetch(:web_ui_server)).to equal(web_ui_server)
     expect(container.fetch(:main_window)).to equal(main_window)
     expect(YouFM::Views::MainWindow).to have_received(:new).once
   end

@@ -48,7 +48,17 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
       source: source,
       recommendation_coordinator: recommendation_coordinator,
       recommendation_seed_store: recommendation_seed_store,
+      recommended_queue_store: recommended_queue_store,
       lastfm_authenticator: lastfm_authenticator
+    )
+  end
+
+  def recommended_queue_store
+    @recommended_queue_store ||= instance_double(
+      YouFM::Services::RecommendedQueueStore,
+      load: { track_ids: [], tracks: [], seeds: {} },
+      save: nil,
+      clear: nil
     )
   end
 
@@ -113,6 +123,23 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     expect(result).to eq(350)
     expect(recommendation_generator).to have_received(:similar_artist_pool_limit=).with(350)
     expect(view_model.state.status_message).to eq('Similar artist pool limit set to 350')
+  end
+
+  it 'updates the minimum recommended queue size' do
+    view_model = build_view_model
+    result = view_model.update_minimum_recommended_queue_size('3')
+
+    expect(result).to eq(3)
+    expect(view_model.minimum_recommended_queue_size).to eq(3)
+    expect(view_model.state.status_message).to eq('Minimum recommended queue size set to 3')
+  end
+
+  it 'rejects invalid minimum recommended queue sizes' do
+    view_model = build_view_model
+    result = view_model.update_minimum_recommended_queue_size('0')
+
+    expect(result).to eq('Minimum recommended queue size must be a positive integer')
+    expect(view_model.minimum_recommended_queue_size).to eq(1)
   end
 
   it 'rejects invalid similar artist pool limits' do
@@ -618,6 +645,111 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     expect(view_model.state.status_message).to include('Added recommendation to Spotify queue')
   end
 
+  it 'restores the cached local recommendation queue on startup' do
+    allow(recommended_queue_store).to receive(:load).and_return(
+      track_ids: ['cached-track'],
+      tracks: [
+        {
+          'id' => 'cached-track',
+          'name' => 'Cached Track',
+          'artists' => [{ 'name' => 'Cached Artist' }],
+          'album' => { 'name' => 'Cached Album' },
+          'uri' => 'spotify:track:cached-track',
+          'duration_ms' => 123
+        }
+      ],
+      seeds: { 'cached-track' => 'Seed — Artist (Взят из плейлиста: Daily)' }
+    )
+
+    view_model = build_view_model
+
+    expect(view_model.state.queue_tracks.map(&:display_label)).to eq(['Cached Track - Cached Artist'])
+    expect(view_model.state.queue_recommendation_seeds).to eq(
+      'cached-track' => 'Seed — Artist (Взят из плейлиста: Daily)'
+    )
+  end
+
+  it 'persists the local recommendation queue after adding a recommendation' do
+    current_track = YouFM::Models::Track.new(
+      id: '1',
+      title: 'Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:1',
+      duration_ms: 1
+    )
+    recommended_track = YouFM::Models::Track.new(
+      id: '2',
+      title: 'Recommended',
+      artists: ['Another Artist'],
+      album: 'Album 2',
+      uri: 'spotify:track:2',
+      duration_ms: 1
+    )
+    allow(source).to receive(:add_to_queue).with(recommended_track)
+    allow(recommendation_generator)
+      .to receive(:generate_with_seed)
+      .and_return(build_recommendation(track: recommended_track, seed_track: current_track))
+
+    view_model = build_view_model
+    view_model.state.search_results = [current_track]
+    view_model.generate_recommendation
+
+    expect(recommended_queue_store).to have_received(:save).with(
+      track_ids: ['2'],
+      tracks: [recommended_track],
+      seeds: { '2' => 'Track — Artist (Взят из плейлиста: Tracks)' }
+    )
+  end
+
+  it 'keeps generating recommendations until the local queue reaches the configured minimum' do
+    current_track = YouFM::Models::Track.new(
+      id: '1',
+      title: 'Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:1',
+      duration_ms: 1
+    )
+    first_recommendation = YouFM::Models::Track.new(
+      id: '2',
+      title: 'First Recommended',
+      artists: ['Another Artist'],
+      album: 'Album 2',
+      uri: 'spotify:track:2',
+      duration_ms: 1
+    )
+    second_recommendation = YouFM::Models::Track.new(
+      id: '3',
+      title: 'Second Recommended',
+      artists: ['Another Artist'],
+      album: 'Album 3',
+      uri: 'spotify:track:3',
+      duration_ms: 1
+    )
+    worker_blocks = []
+    allow(Thread).to receive(:new) do |_args, &block|
+      worker_blocks << block
+      instance_double(Thread, alive?: true)
+    end
+    allow(source).to receive(:add_to_queue)
+    allow(recommendation_generator).to receive(:generate_with_seed).and_return(
+      build_recommendation(track: first_recommendation, seed_track: current_track),
+      build_recommendation(track: second_recommendation, seed_track: current_track)
+    )
+
+    view_model = build_view_model
+    view_model.state.search_results = [current_track]
+    view_model.update_minimum_recommended_queue_size('2')
+
+    view_model.generate_recommendation
+    worker_blocks.shift.call
+
+    expect(source).to have_received(:add_to_queue).with(first_recommendation)
+    expect(source).to have_received(:add_to_queue).with(second_recommendation)
+    expect(view_model.state.queue_tracks).to eq([second_recommendation, first_recommendation])
+  end
+
   it 'can schedule a generated recommendation asynchronously' do
     current_track = YouFM::Models::Track.new(
       id: '1',
@@ -684,7 +816,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     expect(view_model.state.queue_tracks).to eq([])
   end
 
-  it 'shows only recommendations that are still present in the Spotify queue' do
+  it 'shows only recommendations that are still present in the Spotify queue using Spotify order' do
     current_track = YouFM::Models::Track.new(
       id: '1',
       title: 'Track',
@@ -730,12 +862,19 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     view_model.generate_recommendation
     view_model.generate_recommendation
 
-    allow(source).to receive(:queue).and_return([spotify_next_up, first_recommendation])
+    allow(source).to receive(:queue).and_return([spotify_next_up, first_recommendation, second_recommendation])
     view_model.refresh_queue
 
-    expect(view_model.state.queue_tracks).to eq([first_recommendation])
-    expect(view_model.state.queue_recommendation_seeds.keys).to eq(['2'])
-    expect(view_model.state.selected_queue_recommendation_seed).to eq('Track — Artist (Взят из плейлиста: Tracks)')
+    expect(view_model.state.queue_tracks).to eq([first_recommendation, second_recommendation])
+    expect(view_model.state.queue_recommendation_seeds.keys).to eq(%w[2 3])
+    expect(recommended_queue_store).to have_received(:save).with(
+      track_ids: %w[2 3],
+      tracks: [first_recommendation, second_recommendation],
+      seeds: {
+        '2' => 'Track — Artist (Взят из плейлиста: Tracks)',
+        '3' => 'Track — Artist (Взят из плейлиста: Tracks)'
+      }
+    )
   end
 
   it 'generates the next recommendation when Spotify playback changes tracks' do
