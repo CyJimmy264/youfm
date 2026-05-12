@@ -8,12 +8,13 @@ module YouFM
     class Renderer
       TEMPLATE_DIR = File.expand_path('templates', __dir__)
 
-      def render(state:, pool_limit:, minimum_queue_size:, strategy_labels:, enabled_strategies:, exclude_explicit:,
-                 replay_seed_before_recommendation:, seed_replay_interval:)
+      def render(state:, pool_limit:, minimum_queue_size:, maximum_queue_size:, strategy_labels:, enabled_strategies:,
+                 exclude_explicit:, replay_seed_before_recommendation:, seed_replay_interval:)
         TemplateContext.new(
           state: state,
           pool_limit: pool_limit,
           minimum_queue_size: minimum_queue_size,
+          maximum_queue_size: maximum_queue_size,
           strategy_labels: strategy_labels,
           enabled_strategies: enabled_strategies,
           exclude_explicit: exclude_explicit,
@@ -40,11 +41,12 @@ module YouFM
 
       class TemplateContext
         def initialize(state:, pool_limit:, minimum_queue_size:, strategy_labels:, enabled_strategies:,
-                       exclude_explicit:, replay_seed_before_recommendation:, seed_replay_interval:, stylesheet:,
-                       javascript:)
+                       maximum_queue_size:, exclude_explicit:, replay_seed_before_recommendation:,
+                       seed_replay_interval:, stylesheet:, javascript:)
           @state = state
           @pool_limit = pool_limit
           @minimum_queue_size = minimum_queue_size
+          @maximum_queue_size = maximum_queue_size
           @strategy_labels = strategy_labels
           @enabled_strategies = enabled_strategies
           @exclude_explicit = exclude_explicit
@@ -54,9 +56,10 @@ module YouFM
           @javascript = javascript
         end
 
-        attr_reader :state, :pool_limit, :minimum_queue_size, :strategy_labels, :enabled_strategies,
-                    :exclude_explicit, :replay_seed_before_recommendation, :seed_replay_interval, :stylesheet,
-                    :javascript
+        attr_reader(
+          :state, :pool_limit, :minimum_queue_size, :maximum_queue_size, :strategy_labels, :enabled_strategies,
+          :exclude_explicit, :replay_seed_before_recommendation, :seed_replay_interval, :stylesheet, :javascript
+        )
 
         def render(template)
           template.result(binding)

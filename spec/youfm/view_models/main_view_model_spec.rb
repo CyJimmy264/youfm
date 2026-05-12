@@ -176,6 +176,15 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     expect(view_model.state.status_message).to eq('Minimum recommended queue size set to 3')
   end
 
+  it 'updates the maximum recommended queue size' do
+    view_model = build_view_model
+    result = view_model.update_maximum_recommended_queue_size('7')
+
+    expect(result).to eq(7)
+    expect(view_model.maximum_recommended_queue_size).to eq(7)
+    expect(view_model.state.status_message).to eq('Maximum recommended queue size set to 7')
+  end
+
   it 'blocks tracks that were already stored in recommendation history' do
     historical_track = YouFM::Models::Track.new(
       id: 'history-track',
@@ -242,6 +251,37 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
 
     expect(result).to eq('Minimum recommended queue size must be a positive integer')
     expect(view_model.minimum_recommended_queue_size).to eq(1)
+  end
+
+  it 'does not schedule queue fill when the local queue is already at the maximum size' do
+    current_track = YouFM::Models::Track.new(
+      id: '1',
+      title: 'Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:1',
+      duration_ms: 1
+    )
+    recommended_track = YouFM::Models::Track.new(
+      id: '2',
+      title: 'Recommended',
+      artists: ['Another Artist'],
+      album: 'Album 2',
+      uri: 'spotify:track:2',
+      duration_ms: 1
+    )
+    allow(source).to receive(:add_to_queue).with(recommended_track)
+    allow(recommendation_generator).to receive(:generate_with_seed).and_return(
+      build_recommendation(track: recommended_track, seed_track: current_track)
+    )
+
+    view_model = build_view_model
+    view_model.update_minimum_recommended_queue_size('3')
+    view_model.update_maximum_recommended_queue_size('1')
+    view_model.state.search_results = [current_track]
+    view_model.generate_recommendation
+
+    expect(recommendation_generator).to have_received(:generate_with_seed).once
   end
 
   it 'rejects invalid similar artist pool limits' do

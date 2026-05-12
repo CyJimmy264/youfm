@@ -26,12 +26,23 @@
           <%= action_form('refresh', 'Refresh') %>
           <%= action_form('sync_library', 'Sync Library') %>
         </div>
-        <form class="pool" method="post" action="/action">
+        <form class="numeric-settings-form" method="post" action="/action">
           <input type="hidden" name="name" value="apply_numeric_settings">
-          <label for="pool_limit">Artist Pool</label>
-          <input id="pool_limit" name="pool_limit" value="<%= escape(pool_limit) %>">
-          <label for="minimum_queue_size">Min Queue</label>
-          <input id="minimum_queue_size" name="minimum_queue_size" value="<%= escape(minimum_queue_size) %>">
+          <div class="strategies-heading">Numeric Settings</div>
+          <div class="numeric-settings-options">
+            <label class="numeric-setting-row" for="pool_limit">
+              <span>Artist Pool</span>
+              <input id="pool_limit" name="pool_limit" value="<%= escape(pool_limit) %>">
+            </label>
+            <label class="numeric-setting-row" for="minimum_queue_size">
+              <span>Min Queue</span>
+              <input id="minimum_queue_size" name="minimum_queue_size" value="<%= escape(minimum_queue_size) %>">
+            </label>
+            <label class="numeric-setting-row" for="maximum_queue_size">
+              <span>Max Queue</span>
+              <input id="maximum_queue_size" name="maximum_queue_size" value="<%= escape(maximum_queue_size) %>">
+            </label>
+          </div>
           <button type="submit">Apply</button>
         </form>
         <%= recommendation_strategies_form %>

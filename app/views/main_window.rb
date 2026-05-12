@@ -25,7 +25,7 @@ module YouFM
         @last_seen_state_revision = nil
         build_window
         bind_events
-        apply_saved_numeric_settings
+        numeric_settings_panel.load_saved_settings
         apply_saved_recommendation_strategies
         view_model.bootstrap
         render_full
@@ -43,7 +43,7 @@ module YouFM
                   :device_picker, :status_label, :auth_label, :lastfm_auth_label, :device_label, :now_playing_label,
                   :recommendation_seed_label, :toggle_button, :theme_button, :connect_button, :disconnect_button,
                   :connect_lastfm_button, :disconnect_lastfm_button, :tracks_panel, :next_button,
-                  :similar_artist_pool_limit_input, :minimum_recommended_queue_size_input,
+                  :numeric_settings_panel,
                   :recommendation_strategy_selector
 
       def build_window
@@ -161,23 +161,13 @@ module YouFM
       end
 
       def add_numeric_settings_controls(layout)
-        layout.add_widget(build_label(window, 'status_label', 'Artist Pool'))
-
-        @similar_artist_pool_limit_input = QLineEdit.new(window)
-        similar_artist_pool_limit_input.object_name = 'search_input'
-        similar_artist_pool_limit_input.placeholder_text = 'Pool limit'
-        similar_artist_pool_limit_input.maximum_width = 96
-        similar_artist_pool_limit_input.text = view_model.similar_artist_pool_limit.to_s
-        layout.add_widget(similar_artist_pool_limit_input)
-
-        layout.add_widget(build_label(window, 'status_label', 'Min Queue'))
-
-        @minimum_recommended_queue_size_input = QLineEdit.new(window)
-        minimum_recommended_queue_size_input.object_name = 'search_input'
-        minimum_recommended_queue_size_input.placeholder_text = 'Queue size'
-        minimum_recommended_queue_size_input.maximum_width = 96
-        minimum_recommended_queue_size_input.text = view_model.minimum_recommended_queue_size.to_s
-        layout.add_widget(minimum_recommended_queue_size_input)
+        @numeric_settings_panel = NumericSettingsPanel.new(
+          parent: window,
+          view_model: view_model,
+          settings_store: settings_store
+        )
+        numeric_settings_panel.on_apply { handle_apply_numeric_settings }
+        layout.add_widget(numeric_settings_panel.widget)
 
         apply_numeric_settings_button = build_button(window, 'ghost_button', 'Apply')
         apply_numeric_settings_button.connect('clicked') { |_| handle_apply_numeric_settings }
@@ -329,8 +319,7 @@ module YouFM
 
       def bind_events
         search_input.connect('returnPressed()') { handle_search }
-        similar_artist_pool_limit_input.connect('returnPressed()') { handle_apply_numeric_settings }
-        minimum_recommended_queue_size_input.connect('returnPressed()') { handle_apply_numeric_settings }
+        numeric_settings_panel.bind_return_pressed
         tracks_panel.on_selection { |index| handle_selection(index) }
         tracks_panel.on_double_click { handle_play_selected }
         tracks_panel.on_scroll_near_bottom { handle_results_scroll }
@@ -439,25 +428,8 @@ module YouFM
       end
 
       def handle_apply_numeric_settings
-        applied_limit = view_model.update_similar_artist_pool_limit(similar_artist_pool_limit_input.text.to_s)
-        if applied_limit
-          similar_artist_pool_limit_input.text = applied_limit.to_s
-          settings_store.write_similar_artist_pool_limit(applied_limit)
-        else
-          similar_artist_pool_limit_input.text = view_model.similar_artist_pool_limit.to_s
-        end
-        applied_queue_size = view_model.update_minimum_recommended_queue_size(
-          minimum_recommended_queue_size_input.text.to_s
-        )
-        if applied_queue_size
-          minimum_recommended_queue_size_input.text = applied_queue_size.to_s
-          settings_store.write_minimum_recommended_queue_size(applied_queue_size)
-        else
-          minimum_recommended_queue_size_input.text = view_model.minimum_recommended_queue_size.to_s
-        end
+        numeric_settings_panel.apply_changes
         render_status
-      rescue StandardError => e
-        Services::Logger.warn("[youfm] save numeric settings failed: #{e.class}: #{e.message}")
       end
 
       def handle_recommendation_settings_toggle(enabled_names, exclude_explicit, replay_seed, interval)
@@ -574,30 +546,6 @@ module YouFM
       def suspend_playback_polling!
         @idle_playback_polls = IDLE_POLLS_BEFORE_SUSPEND
         @playback_refresher.stop if @playback_refresher.is_active
-      end
-
-      def apply_saved_numeric_settings
-        saved_limit = settings_store.read_similar_artist_pool_limit
-        if saved_limit.nil?
-          similar_artist_pool_limit_input.text = view_model.similar_artist_pool_limit.to_s
-        else
-          applied_limit = view_model.update_similar_artist_pool_limit(saved_limit.to_s)
-          similar_artist_pool_limit_input.text = (applied_limit || view_model.similar_artist_pool_limit).to_s
-        end
-
-        saved_queue_size = settings_store.read_minimum_recommended_queue_size
-        if saved_queue_size.nil?
-          minimum_recommended_queue_size_input.text = view_model.minimum_recommended_queue_size.to_s
-        else
-          applied_queue_size = view_model.update_minimum_recommended_queue_size(saved_queue_size.to_s)
-          minimum_recommended_queue_size_input.text = (
-            applied_queue_size || view_model.minimum_recommended_queue_size
-          ).to_s
-        end
-      rescue StandardError => e
-        Services::Logger.warn("[youfm] load numeric settings failed: #{e.class}: #{e.message}")
-        similar_artist_pool_limit_input.text = view_model.similar_artist_pool_limit.to_s
-        minimum_recommended_queue_size_input.text = view_model.minimum_recommended_queue_size.to_s
       end
 
       def apply_saved_recommendation_strategies

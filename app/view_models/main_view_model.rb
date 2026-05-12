@@ -4,7 +4,6 @@ module YouFM
   module ViewModels
     class MainViewModel
       PLAYLIST_PAGE_SIZE = 100
-      DEFAULT_MINIMUM_RECOMMENDED_QUEUE_SIZE = 1
       DEFAULT_SEED_REPLAY_INTERVAL = Services::RecommendationCoordinator::DEFAULT_SEED_REPLAY_INTERVAL
       RECOMMENDATION_STRATEGY_LABELS = {
         artist_similar_top_tracks: 'Similar artist top tracks',
@@ -46,7 +45,6 @@ module YouFM
         @recommendation_seed_store = recommendation_seed_store
         @lastfm_authenticator = lastfm_authenticator
         @last_playing_track_id = nil
-        @minimum_recommended_queue_size = DEFAULT_MINIMUM_RECOMMENDED_QUEUE_SIZE
         @last_recommendation_seed_track_id = nil
         @now_playing_recommendation_seeds = {}
         @next_queue_refresh_at = nil
@@ -87,9 +85,13 @@ module YouFM
           update_status: method(:update_status),
           friendly_error_message: method(:friendly_error_message)
         )
+        @numeric_settings = RecommendationNumericSettings.new(
+          recommendation_coordinator: recommendation_coordinator,
+          update_status: method(:update_status)
+        )
       end
 
-      attr_reader :state, :minimum_recommended_queue_size
+      attr_reader :state
 
       def revision
         @state_revision_mutex.synchronize { @state_revision }
@@ -375,7 +377,15 @@ module YouFM
       end
 
       def similar_artist_pool_limit
-        recommendation_coordinator.similar_artist_pool_limit
+        numeric_settings.similar_artist_pool_limit
+      end
+
+      def minimum_recommended_queue_size
+        numeric_settings.minimum_recommended_queue_size
+      end
+
+      def maximum_recommended_queue_size
+        numeric_settings.maximum_recommended_queue_size
       end
 
       def recommendation_strategy_labels
@@ -435,34 +445,27 @@ module YouFM
       end
 
       def apply_similar_artist_pool_limit(value)
-        parsed = normalize_similar_artist_pool_limit(value)
-        return nil unless parsed
-
-        recommendation_coordinator.similar_artist_pool_limit = parsed
-        parsed
+        numeric_settings.apply_similar_artist_pool_limit(value)
       end
 
       def update_similar_artist_pool_limit(value)
-        parsed = apply_similar_artist_pool_limit(value)
-        return update_status('Similar artist pool limit must be a positive integer') unless parsed
-
-        update_status("Similar artist pool limit set to #{parsed}")
-        parsed
+        numeric_settings.update_similar_artist_pool_limit(value)
       end
 
       def apply_minimum_recommended_queue_size(value)
-        parsed = normalize_positive_integer(value)
-        return nil unless parsed
-
-        @minimum_recommended_queue_size = parsed
+        numeric_settings.apply_minimum_recommended_queue_size(value)
       end
 
       def update_minimum_recommended_queue_size(value)
-        parsed = apply_minimum_recommended_queue_size(value)
-        return update_status('Minimum recommended queue size must be a positive integer') unless parsed
+        numeric_settings.update_minimum_recommended_queue_size(value)
+      end
 
-        update_status("Minimum recommended queue size set to #{parsed}")
-        parsed
+      def apply_maximum_recommended_queue_size(value)
+        numeric_settings.apply_maximum_recommended_queue_size(value)
+      end
+
+      def update_maximum_recommended_queue_size(value)
+        numeric_settings.update_maximum_recommended_queue_size(value)
       end
 
       def status=(message)
@@ -480,7 +483,7 @@ module YouFM
       private
 
       attr_reader :source, :recommendation_coordinator, :recommendation_seed_store, :lastfm_authenticator,
-                  :playlist_tracks_loader, :recommended_queue
+                  :playlist_tracks_loader, :recommended_queue, :numeric_settings
 
       def initialize_state_notifier
         @state_revision_mutex = Mutex.new
@@ -626,6 +629,8 @@ module YouFM
       def append_recommended_track_to_local_queue(track, seed_label)
         queue_size = recommended_queue.append(track, seed_label)
         remember_recommendation_history(track.id)
+        return if queue_size >= maximum_recommended_queue_size
+
         enqueue_recommendation_async(trigger: :queue_fill) if queue_size < minimum_recommended_queue_size
       end
 
@@ -781,17 +786,6 @@ module YouFM
         end
       end
 
-      def normalize_similar_artist_pool_limit(value)
-        normalize_positive_integer(value)
-      end
-
-      def normalize_positive_integer(value)
-        parsed = Integer(value, exception: false)
-        return nil if parsed.nil? || parsed <= 0
-
-        parsed
-      end
-
       def queue_refresh_deferred?
         @next_queue_refresh_at && Time.now < @next_queue_refresh_at
       end
@@ -806,6 +800,13 @@ module YouFM
         return 'Queue refresh rate-limited by Spotify' unless retry_after_seconds&.positive?
 
         "Queue refresh rate-limited by Spotify, retrying in #{retry_after_seconds}s"
+      end
+
+      def normalize_positive_integer(value)
+        parsed = Integer(value, exception: false)
+        return nil if parsed.nil? || parsed <= 0
+
+        parsed
       end
 
       def notify_state_changed

@@ -31,6 +31,14 @@ module YouFM
         write_payload(payload.merge('minimum_recommended_queue_size' => size.to_i))
       end
 
+      def read_maximum_recommended_queue_size
+        payload.fetch('maximum_recommended_queue_size', nil)
+      end
+
+      def write_maximum_recommended_queue_size(size)
+        write_payload(payload.merge('maximum_recommended_queue_size' => size.to_i))
+      end
+
       def read_enabled_recommendation_strategy_names
         payload.fetch('enabled_recommendation_strategy_names', nil)
       end

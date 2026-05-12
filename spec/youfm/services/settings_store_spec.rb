@@ -11,6 +11,7 @@ RSpec.describe YouFM::Services::SettingsStore do
 
       store.write_similar_artist_pool_limit(350)
       store.write_minimum_recommended_queue_size(3)
+      store.write_maximum_recommended_queue_size(25)
       store.write_exclude_explicit_recommendations(true)
       store.write_replay_seed_before_recommendation(true)
       store.write_seed_replay_interval(4)
@@ -18,6 +19,7 @@ RSpec.describe YouFM::Services::SettingsStore do
       reloaded_store = described_class.new(path:)
       expect(reloaded_store.read_similar_artist_pool_limit).to eq(350)
       expect(reloaded_store.read_minimum_recommended_queue_size).to eq(3)
+      expect(reloaded_store.read_maximum_recommended_queue_size).to eq(25)
       expect(reloaded_store.read_exclude_explicit_recommendations).to be(true)
       expect(reloaded_store.read_replay_seed_before_recommendation).to be(true)
       expect(reloaded_store.read_seed_replay_interval).to eq(4)

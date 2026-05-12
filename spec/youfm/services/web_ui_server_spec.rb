@@ -54,6 +54,7 @@ RSpec.describe YouFM::Services::WebUiServer do
       state: state,
       similar_artist_pool_limit: 200,
       minimum_recommended_queue_size: 1,
+      maximum_recommended_queue_size: 25,
       recommendation_strategy_labels: {
         artist_similar_top_tracks: 'Similar artist top tracks',
         track_similar: 'Similar tracks'
@@ -68,6 +69,7 @@ RSpec.describe YouFM::Services::WebUiServer do
       generate_recommendation_async: nil,
       update_similar_artist_pool_limit: 300,
       update_minimum_recommended_queue_size: 2,
+      update_maximum_recommended_queue_size: 8,
       update_enabled_recommendation_strategy_names: %i[artist_similar_top_tracks track_similar],
       update_seed_replay_settings: { enabled: true, interval: 4 },
       'filter_explicit_content=': true,
@@ -86,6 +88,7 @@ RSpec.describe YouFM::Services::WebUiServer do
       YouFM::Services::SettingsStore,
       write_similar_artist_pool_limit: nil,
       write_minimum_recommended_queue_size: nil,
+      write_maximum_recommended_queue_size: nil,
       write_enabled_recommendation_strategy_names: nil,
       write_exclude_explicit_recommendations: nil,
       write_replay_seed_before_recommendation: nil,
@@ -117,7 +120,9 @@ RSpec.describe YouFM::Services::WebUiServer do
 
     expect(html).to include('Artist Pool')
     expect(html).to include('Min Queue')
+    expect(html).to include('Max Queue')
     expect(html).to include('minimum_queue_size')
+    expect(html).to include('maximum_queue_size')
   end
 
   it 'renders recommendation strategy controls' do
@@ -235,12 +240,18 @@ RSpec.describe YouFM::Services::WebUiServer do
   it 'applies and persists numeric settings' do
     server = build_server
 
-    server.send(:run_action, :apply_numeric_settings, { 'pool_limit' => '300', 'minimum_queue_size' => '2' })
+    server.send(
+      :run_action,
+      :apply_numeric_settings,
+      { 'pool_limit' => '300', 'minimum_queue_size' => '2', 'maximum_queue_size' => '8' }
+    )
 
     expect(view_model).to have_received(:update_similar_artist_pool_limit).with('300')
     expect(settings_store).to have_received(:write_similar_artist_pool_limit).with(300)
     expect(view_model).to have_received(:update_minimum_recommended_queue_size).with('2')
     expect(settings_store).to have_received(:write_minimum_recommended_queue_size).with(2)
+    expect(view_model).to have_received(:update_maximum_recommended_queue_size).with('8')
+    expect(settings_store).to have_received(:write_maximum_recommended_queue_size).with(8)
   end
 
   it 'applies and persists recommendation strategies' do
@@ -352,12 +363,14 @@ RSpec.describe YouFM::Services::WebUiServer do
 
   it 'processes queued actions with a worker' do
     fake_view_model = Class.new do
-      attr_reader :state, :similar_artist_pool_limit, :minimum_recommended_queue_size, :refreshed, :statuses
+      attr_reader :state, :similar_artist_pool_limit, :minimum_recommended_queue_size,
+                  :maximum_recommended_queue_size, :refreshed, :statuses
 
       def initialize(state)
         @state = state
         @similar_artist_pool_limit = 200
         @minimum_recommended_queue_size = 1
+        @maximum_recommended_queue_size = 25
         @recommendation_strategy_labels = {}
         @enabled_recommendation_strategy_names = []
         @refreshed = Queue.new

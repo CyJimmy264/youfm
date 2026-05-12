@@ -65,7 +65,22 @@ select {
 input { width: 120px; }
 select { min-width: 0; width: 100%; }
 form { margin: 0; }
-.pool { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.numeric-settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+.numeric-settings-options { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.numeric-setting-row {
+  display: inline-flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  color: var(--text);
+}
+.numeric-setting-row input { width: 96px; min-height: 36px; }
 .strategies-form {
   display: flex;
   flex-direction: column;
@@ -92,7 +107,7 @@ form { margin: 0; }
   width: 100%;
 }
 
-.pool label,
+.numeric-settings-form label,
 .device-form label,
 .playlist-form label { color: var(--muted); }
 
@@ -129,7 +144,7 @@ form { margin: 0; }
 @media (max-width: 640px) {
   main { margin: 20px auto; }
   .panel { padding: 18px; border-radius: 18px; }
-  .button-row, .pool { align-items: stretch; flex-direction: column; }
+  .button-row, .numeric-settings-form { align-items: stretch; }
   .device-form { grid-template-columns: 1fr; }
   .playlist-form { grid-template-columns: 1fr; }
   .strategies-form { grid-template-columns: 1fr; }

@@ -269,6 +269,9 @@ module YouFM
           minimum_queue_size: log_render_step('minimum_recommended_queue_size') do
             view_model.minimum_recommended_queue_size
           end,
+          maximum_queue_size: log_render_step('maximum_recommended_queue_size') do
+            view_model.maximum_recommended_queue_size
+          end,
           strategy_labels: log_render_step('recommendation_strategy_labels') do
             view_model.recommendation_strategy_labels
           end,
@@ -406,6 +409,8 @@ module YouFM
         settings_store.write_similar_artist_pool_limit(applied_limit) if applied_limit
         applied_queue_size = view_model.update_minimum_recommended_queue_size(params['minimum_queue_size'].to_s)
         settings_store.write_minimum_recommended_queue_size(applied_queue_size) if applied_queue_size
+        applied_maximum_queue_size = view_model.update_maximum_recommended_queue_size(params['maximum_queue_size'].to_s)
+        settings_store.write_maximum_recommended_queue_size(applied_maximum_queue_size) if applied_maximum_queue_size
       end
 
       def apply_recommendation_strategies_action(params)

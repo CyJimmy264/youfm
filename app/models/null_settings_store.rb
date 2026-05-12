@@ -9,6 +9,8 @@ module YouFM
       def write_similar_artist_pool_limit(_limit) = nil
       def read_minimum_recommended_queue_size = nil
       def write_minimum_recommended_queue_size(_size) = nil
+      def read_maximum_recommended_queue_size = nil
+      def write_maximum_recommended_queue_size(_size) = nil
       def read_enabled_recommendation_strategy_names = nil
       def write_enabled_recommendation_strategy_names(_names) = nil
       def read_exclude_explicit_recommendations = nil
