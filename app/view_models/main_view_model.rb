@@ -9,6 +9,7 @@ module YouFM
         artist_similar_top_tracks: 'Similar artist top tracks',
         track_similar: 'Similar tracks'
       }.freeze
+      EXCLUDE_EXPLICIT_LABEL = 'Exclude explicit content'
 
       State = Struct.new(
         :source_name,
@@ -382,6 +383,10 @@ module YouFM
         recommendation_coordinator.enabled_strategy_names
       end
 
+      def filter_explicit_content?
+        recommendation_coordinator.exclude_explicit?
+      end
+
       def update_enabled_recommendation_strategy_names(names)
         recommendation_coordinator.enabled_strategy_names = names
         enabled_names = enabled_recommendation_strategy_names
@@ -389,6 +394,15 @@ module YouFM
         update_status("Recommendation strategies enabled: #{labels.empty? ? 'none' : labels.join(', ')}")
         enabled_names
       end
+
+      # rubocop:disable Naming/PredicateMethod
+      def filter_explicit_content=(value)
+        recommendation_coordinator.exclude_explicit = value
+        filter_state = filter_explicit_content? ? 'enabled' : 'disabled'
+        update_status("Explicit content filter #{filter_state}")
+        filter_explicit_content?
+      end
+      # rubocop:enable Naming/PredicateMethod
 
       def apply_similar_artist_pool_limit(value)
         parsed = normalize_similar_artist_pool_limit(value)

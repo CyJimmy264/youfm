@@ -18,7 +18,8 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     instance_double(
       YouFM::Services::RecommendationGenerator,
       similar_artist_pool_limit: 200,
-      enabled_strategy_names: [:artist_similar_top_tracks]
+      enabled_strategy_names: [:artist_similar_top_tracks],
+      exclude_explicit?: true
     )
   end
   let(:recommendation_coordinator) do
@@ -139,6 +140,18 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
       %w[artist_similar_top_tracks track_similar]
     )
     expect(view_model.state.status_message).to include('Similar artist top tracks, Similar tracks')
+  end
+
+  it 'updates the explicit content filter through the recommendation generator' do
+    allow(recommendation_generator).to receive(:exclude_explicit=) do |value|
+      allow(recommendation_generator).to receive(:exclude_explicit?).and_return(value)
+    end
+
+    view_model = build_view_model
+    view_model.filter_explicit_content = false
+
+    expect(recommendation_generator).to have_received(:exclude_explicit=).with(false)
+    expect(view_model.state.status_message).to eq('Explicit content filter disabled')
   end
 
   it 'updates the minimum recommended queue size' do

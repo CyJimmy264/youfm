@@ -59,6 +59,7 @@ RSpec.describe YouFM::Services::WebUiServer do
         track_similar: 'Similar tracks'
       },
       enabled_recommendation_strategy_names: [:artist_similar_top_tracks],
+      filter_explicit_content?: true,
       toggle_playback: nil,
       skip_to_next: nil,
       generate_recommendation: nil,
@@ -66,6 +67,7 @@ RSpec.describe YouFM::Services::WebUiServer do
       update_similar_artist_pool_limit: 300,
       update_minimum_recommended_queue_size: 2,
       update_enabled_recommendation_strategy_names: %i[artist_similar_top_tracks track_similar],
+      'filter_explicit_content=': true,
       select_device_index: nil,
       activate_selected_device: nil,
       select_playlist_index: nil,
@@ -81,7 +83,8 @@ RSpec.describe YouFM::Services::WebUiServer do
       YouFM::Services::SettingsStore,
       write_similar_artist_pool_limit: nil,
       write_minimum_recommended_queue_size: nil,
-      write_enabled_recommendation_strategy_names: nil
+      write_enabled_recommendation_strategy_names: nil,
+      write_exclude_explicit_recommendations: nil
     )
   end
 
@@ -118,6 +121,7 @@ RSpec.describe YouFM::Services::WebUiServer do
     expect(html).to include('Recommendation Strategies')
     expect(html).to include('Similar artist top tracks')
     expect(html).to include('Similar tracks')
+    expect(html).to include('Exclude explicit content')
     expect(html).to include('strategy_names[]')
   end
 
@@ -235,6 +239,7 @@ RSpec.describe YouFM::Services::WebUiServer do
 
   it 'applies and persists recommendation strategies' do
     server = build_server
+    allow(view_model).to receive(:filter_explicit_content=).with(false).and_return(false)
 
     server.send(
       :run_action,
@@ -248,6 +253,22 @@ RSpec.describe YouFM::Services::WebUiServer do
     expect(settings_store).to have_received(:write_enabled_recommendation_strategy_names).with(
       %i[artist_similar_top_tracks track_similar]
     )
+    expect(view_model).to have_received(:filter_explicit_content=).with(false)
+    expect(settings_store).to have_received(:write_exclude_explicit_recommendations).with(false)
+  end
+
+  it 'applies and persists the explicit content filter' do
+    server = build_server
+    allow(view_model).to receive(:filter_explicit_content=).with(true).and_return(true)
+
+    server.send(
+      :run_action,
+      :apply_recommendation_strategies,
+      { 'exclude_explicit' => '1' }
+    )
+
+    expect(view_model).to have_received(:filter_explicit_content=).with(true)
+    expect(settings_store).to have_received(:write_exclude_explicit_recommendations).with(true)
   end
 
   it 'selects and activates a device' do

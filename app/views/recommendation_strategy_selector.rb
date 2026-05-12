@@ -5,13 +5,14 @@ module YouFM
     class RecommendationStrategySelector
       attr_reader :widget
 
-      def initialize(parent:, strategy_labels:, enabled_names:)
+      def initialize(parent:, strategy_labels:, enabled_names:, exclude_explicit:)
         @widget = QWidget.new(parent)
         @strategy_labels = strategy_labels
         @checkboxes = {}
+        @exclude_explicit_checkbox = nil
         @applying = false
         build_layout
-        apply_enabled_names(enabled_names)
+        apply_state(enabled_names:, exclude_explicit:)
       end
 
       def on_change(&)
@@ -24,19 +25,20 @@ module YouFM
         end
       end
 
-      def apply_enabled_names(names)
+      def apply_state(enabled_names:, exclude_explicit:)
         @applying = true
-        enabled = Array(names).map(&:to_sym)
+        enabled = Array(enabled_names).map(&:to_sym)
         checkboxes.each do |name, checkbox|
           checkbox.checked = enabled.include?(name)
         end
+        exclude_explicit_checkbox.checked = exclude_explicit == true
       ensure
         @applying = false
       end
 
       private
 
-      attr_reader :strategy_labels, :checkboxes
+      attr_reader :strategy_labels, :checkboxes, :exclude_explicit_checkbox
 
       def build_layout
         layout = QVBoxLayout.new(widget)
@@ -56,6 +58,8 @@ module YouFM
             checkboxes[name] = checkbox
             layout.add_widget(checkbox)
           end
+          @exclude_explicit_checkbox = build_checkbox('Exclude explicit content')
+          layout.add_widget(exclude_explicit_checkbox)
         end
       end
 
@@ -78,7 +82,7 @@ module YouFM
       def emit_change
         return if @applying
 
-        @on_change&.call(enabled_names)
+        @on_change&.call(enabled_names, exclude_explicit_checkbox.is_checked)
       end
     end
   end

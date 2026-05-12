@@ -78,6 +78,14 @@ module YouFM
         recommendation_generator.enabled_strategy_names = names
       end
 
+      def exclude_explicit?
+        recommendation_generator.exclude_explicit?
+      end
+
+      def exclude_explicit=(value)
+        recommendation_generator.exclude_explicit = value
+      end
+
       def reset
         worker_mutex.synchronize do
           jobs.clear

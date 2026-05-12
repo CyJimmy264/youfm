@@ -39,6 +39,14 @@ module YouFM
         write_payload(payload.merge('enabled_recommendation_strategy_names' => Array(names).map(&:to_s)))
       end
 
+      def read_exclude_explicit_recommendations
+        payload.fetch('exclude_explicit_recommendations', nil)
+      end
+
+      def write_exclude_explicit_recommendations(value)
+        write_payload(payload.merge('exclude_explicit_recommendations' => value == true))
+      end
+
       private
 
       attr_reader :path

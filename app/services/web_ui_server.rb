@@ -265,9 +265,19 @@ module YouFM
         enabled_strategies = log_render_step('enabled_recommendation_strategy_names') do
           view_model.enabled_recommendation_strategy_names
         end
+        exclude_explicit = log_render_step('exclude_explicit_recommendations') do
+          view_model.filter_explicit_content?
+        end
 
         log_render_step('html') do
-          renderer.render(state:, pool_limit:, minimum_queue_size:, strategy_labels:, enabled_strategies:)
+          renderer.render(
+            state:,
+            pool_limit:,
+            minimum_queue_size:,
+            strategy_labels:,
+            enabled_strategies:,
+            exclude_explicit:
+          )
         end
       end
 
@@ -401,6 +411,8 @@ module YouFM
       def apply_recommendation_strategies_action(params)
         enabled_strategies = view_model.update_enabled_recommendation_strategy_names(params.fetch('strategy_names', []))
         settings_store.write_enabled_recommendation_strategy_names(enabled_strategies)
+        exclude_explicit = view_model.filter_explicit_content = (params['exclude_explicit'] == '1')
+        settings_store.write_exclude_explicit_recommendations(exclude_explicit)
       end
 
       def use_device_action(params)

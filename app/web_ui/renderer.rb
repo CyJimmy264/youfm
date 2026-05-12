@@ -8,13 +8,14 @@ module YouFM
     class Renderer
       TEMPLATE_DIR = File.expand_path('templates', __dir__)
 
-      def render(state:, pool_limit:, minimum_queue_size:, strategy_labels:, enabled_strategies:)
+      def render(state:, pool_limit:, minimum_queue_size:, strategy_labels:, enabled_strategies:, exclude_explicit:)
         TemplateContext.new(
           state: state,
           pool_limit: pool_limit,
           minimum_queue_size: minimum_queue_size,
           strategy_labels: strategy_labels,
           enabled_strategies: enabled_strategies,
+          exclude_explicit: exclude_explicit,
           stylesheet: stylesheet,
           javascript: javascript
         ).render(template)
@@ -35,19 +36,20 @@ module YouFM
       end
 
       class TemplateContext
-        def initialize(state:, pool_limit:, minimum_queue_size:, strategy_labels:, enabled_strategies:, stylesheet:,
-                       javascript:)
+        def initialize(state:, pool_limit:, minimum_queue_size:, strategy_labels:, enabled_strategies:,
+                       exclude_explicit:, stylesheet:, javascript:)
           @state = state
           @pool_limit = pool_limit
           @minimum_queue_size = minimum_queue_size
           @strategy_labels = strategy_labels
           @enabled_strategies = enabled_strategies
+          @exclude_explicit = exclude_explicit
           @stylesheet = stylesheet
           @javascript = javascript
         end
 
-        attr_reader :state, :pool_limit, :minimum_queue_size, :strategy_labels, :enabled_strategies, :stylesheet,
-                    :javascript
+        attr_reader :state, :pool_limit, :minimum_queue_size, :strategy_labels, :enabled_strategies,
+                    :exclude_explicit, :stylesheet, :javascript
 
         def render(template)
           template.result(binding)
@@ -127,12 +129,19 @@ module YouFM
               </label>
             HTML
           end.join
+          explicit_checked = exclude_explicit ? ' checked' : ''
 
           <<~HTML
             <form class="strategies-form" method="post" action="/action">
               <input type="hidden" name="name" value="apply_recommendation_strategies">
               <div class="strategies-heading">Recommendation Strategies</div>
-              <div class="strategy-options">#{checkboxes}</div>
+              <div class="strategy-options">
+                #{checkboxes}
+                <label class="checkbox-label">
+                  <input type="checkbox" name="exclude_explicit" value="1"#{explicit_checked}>
+                  <span>Exclude explicit content</span>
+                </label>
+              </div>
               <button type="submit">Apply</button>
             </form>
           HTML

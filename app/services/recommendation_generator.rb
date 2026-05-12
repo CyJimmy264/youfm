@@ -6,12 +6,14 @@ module YouFM
       DEFAULT_SIMILAR_ARTIST_POOL_LIMIT = RecommendationStrategies::ArtistSimilarTopTracks::
         DEFAULT_SIMILAR_ARTIST_POOL_LIMIT
       DEFAULT_ENABLED_STRATEGIES = %i[artist_similar_top_tracks].freeze
+      DEFAULT_EXCLUDE_EXPLICIT = true
       STRATEGY_NAMES = %i[artist_similar_top_tracks track_similar].freeze
       Recommendation = Struct.new(:track, :seed_track)
 
       def initialize(lastfm_client:, spotify_client:, similar_artist_pool_limit: DEFAULT_SIMILAR_ARTIST_POOL_LIMIT,
-                     enabled_strategy_names: DEFAULT_ENABLED_STRATEGIES, random: Random.new)
-        matcher = RecommendationTrackMatcher.new(spotify_client: spotify_client)
+                     enabled_strategy_names: DEFAULT_ENABLED_STRATEGIES, exclude_explicit: DEFAULT_EXCLUDE_EXPLICIT,
+                     random: Random.new)
+        @matcher = RecommendationTrackMatcher.new(spotify_client: spotify_client, exclude_explicit: exclude_explicit)
         @strategies = {
           artist_similar_top_tracks: RecommendationStrategies::ArtistSimilarTopTracks.new(
             lastfm_client: lastfm_client,
@@ -25,6 +27,14 @@ module YouFM
       end
 
       attr_reader :enabled_strategy_names
+
+      def exclude_explicit?
+        matcher.exclude_explicit
+      end
+
+      def exclude_explicit=(value)
+        matcher.exclude_explicit = value == true
+      end
 
       def similar_artist_pool_limit
         strategies.fetch(:artist_similar_top_tracks).similar_artist_pool_limit
@@ -60,7 +70,7 @@ module YouFM
 
       private
 
-      attr_reader :strategies
+      attr_reader :matcher, :strategies
 
       def recommendation_for_seed_track(seed_track, blocked_track_ids, playlist_name)
         enabled_strategy_names.shuffle.each do |strategy_name|

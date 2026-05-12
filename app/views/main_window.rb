@@ -188,10 +188,11 @@ module YouFM
         @recommendation_strategy_selector = RecommendationStrategySelector.new(
           parent: window,
           strategy_labels: view_model.recommendation_strategy_labels,
-          enabled_names: view_model.enabled_recommendation_strategy_names
+          enabled_names: view_model.enabled_recommendation_strategy_names,
+          exclude_explicit: view_model.filter_explicit_content?
         )
-        recommendation_strategy_selector.on_change do |enabled_names|
-          handle_recommendation_strategy_toggle(enabled_names)
+        recommendation_strategy_selector.on_change do |enabled_names, exclude_explicit|
+          handle_recommendation_settings_toggle(enabled_names, exclude_explicit)
         end
         layout.add_widget(recommendation_strategy_selector.widget)
       end
@@ -457,9 +458,11 @@ module YouFM
         Services::Logger.warn("[youfm] save numeric settings failed: #{e.class}: #{e.message}")
       end
 
-      def handle_recommendation_strategy_toggle(enabled_names)
+      def handle_recommendation_settings_toggle(enabled_names, exclude_explicit)
         applied_names = view_model.update_enabled_recommendation_strategy_names(enabled_names)
         settings_store.write_enabled_recommendation_strategy_names(applied_names)
+        applied_exclude_explicit = view_model.filter_explicit_content = exclude_explicit
+        settings_store.write_exclude_explicit_recommendations(applied_exclude_explicit)
         render_status
       rescue StandardError => e
         Services::Logger.warn("[youfm] save recommendation strategies failed: #{e.class}: #{e.message}")
@@ -593,7 +596,12 @@ module YouFM
       def apply_saved_recommendation_strategies
         saved_names = settings_store.read_enabled_recommendation_strategy_names
         view_model.update_enabled_recommendation_strategy_names(saved_names) if saved_names
-        recommendation_strategy_selector.apply_enabled_names(view_model.enabled_recommendation_strategy_names)
+        saved_exclude_explicit = settings_store.read_exclude_explicit_recommendations
+        view_model.filter_explicit_content = saved_exclude_explicit unless saved_exclude_explicit.nil?
+        recommendation_strategy_selector.apply_state(
+          enabled_names: view_model.enabled_recommendation_strategy_names,
+          exclude_explicit: view_model.filter_explicit_content?
+        )
       rescue StandardError => e
         Services::Logger.warn("[youfm] load recommendation strategies failed: #{e.class}: #{e.message}")
       end
