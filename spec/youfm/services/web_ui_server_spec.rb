@@ -60,6 +60,8 @@ RSpec.describe YouFM::Services::WebUiServer do
       },
       enabled_recommendation_strategy_names: [:artist_similar_top_tracks],
       filter_explicit_content?: true,
+      replay_seed_before_recommendation?: true,
+      seed_replay_interval: 4,
       toggle_playback: nil,
       skip_to_next: nil,
       generate_recommendation: nil,
@@ -67,6 +69,7 @@ RSpec.describe YouFM::Services::WebUiServer do
       update_similar_artist_pool_limit: 300,
       update_minimum_recommended_queue_size: 2,
       update_enabled_recommendation_strategy_names: %i[artist_similar_top_tracks track_similar],
+      update_seed_replay_settings: { enabled: true, interval: 4 },
       'filter_explicit_content=': true,
       select_device_index: nil,
       activate_selected_device: nil,
@@ -84,7 +87,9 @@ RSpec.describe YouFM::Services::WebUiServer do
       write_similar_artist_pool_limit: nil,
       write_minimum_recommended_queue_size: nil,
       write_enabled_recommendation_strategy_names: nil,
-      write_exclude_explicit_recommendations: nil
+      write_exclude_explicit_recommendations: nil,
+      write_replay_seed_before_recommendation: nil,
+      write_seed_replay_interval: nil
     )
   end
 
@@ -122,6 +127,7 @@ RSpec.describe YouFM::Services::WebUiServer do
     expect(html).to include('Similar artist top tracks')
     expect(html).to include('Similar tracks')
     expect(html).to include('Exclude explicit content')
+    expect(html).to include('Replay seed before recommendation')
     expect(html).to include('strategy_names[]')
   end
 
@@ -240,6 +246,10 @@ RSpec.describe YouFM::Services::WebUiServer do
   it 'applies and persists recommendation strategies' do
     server = build_server
     allow(view_model).to receive(:filter_explicit_content=).with(false).and_return(false)
+    allow(view_model).to receive(:update_seed_replay_settings).with(enabled: false, interval: '').and_return(
+      enabled: false,
+      interval: 4
+    )
 
     server.send(
       :run_action,
@@ -255,11 +265,17 @@ RSpec.describe YouFM::Services::WebUiServer do
     )
     expect(view_model).to have_received(:filter_explicit_content=).with(false)
     expect(settings_store).to have_received(:write_exclude_explicit_recommendations).with(false)
+    expect(settings_store).to have_received(:write_replay_seed_before_recommendation).with(false)
+    expect(settings_store).to have_received(:write_seed_replay_interval).with(4)
   end
 
   it 'applies and persists the explicit content filter' do
     server = build_server
     allow(view_model).to receive(:filter_explicit_content=).with(true).and_return(true)
+    allow(view_model).to receive(:update_seed_replay_settings).with(enabled: false, interval: '').and_return(
+      enabled: false,
+      interval: 4
+    )
 
     server.send(
       :run_action,
@@ -269,6 +285,25 @@ RSpec.describe YouFM::Services::WebUiServer do
 
     expect(view_model).to have_received(:filter_explicit_content=).with(true)
     expect(settings_store).to have_received(:write_exclude_explicit_recommendations).with(true)
+  end
+
+  it 'applies and persists seed replay settings' do
+    server = build_server
+    allow(view_model).to receive(:filter_explicit_content=).with(false).and_return(false)
+    allow(view_model).to receive(:update_seed_replay_settings).with(enabled: true, interval: '5').and_return(
+      enabled: true,
+      interval: 5
+    )
+
+    server.send(
+      :run_action,
+      :apply_recommendation_strategies,
+      { 'replay_seed_before_recommendation' => '1', 'seed_replay_interval' => '5' }
+    )
+
+    expect(view_model).to have_received(:update_seed_replay_settings).with(enabled: true, interval: '5')
+    expect(settings_store).to have_received(:write_replay_seed_before_recommendation).with(true)
+    expect(settings_store).to have_received(:write_seed_replay_interval).with(5)
   end
 
   it 'selects and activates a device' do

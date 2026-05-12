@@ -5,6 +5,7 @@ module YouFM
     class MainViewModel
       PLAYLIST_PAGE_SIZE = 100
       DEFAULT_MINIMUM_RECOMMENDED_QUEUE_SIZE = 1
+      DEFAULT_SEED_REPLAY_INTERVAL = Services::RecommendationCoordinator::DEFAULT_SEED_REPLAY_INTERVAL
       RECOMMENDATION_STRATEGY_LABELS = {
         artist_similar_top_tracks: 'Similar artist top tracks',
         track_similar: 'Similar tracks'
@@ -387,6 +388,14 @@ module YouFM
         recommendation_coordinator.exclude_explicit?
       end
 
+      def replay_seed_before_recommendation?
+        recommendation_coordinator.replay_seed_before_recommendation?
+      end
+
+      def seed_replay_interval
+        recommendation_coordinator.seed_replay_interval
+      end
+
       def update_enabled_recommendation_strategy_names(names)
         recommendation_coordinator.enabled_strategy_names = names
         enabled_names = enabled_recommendation_strategy_names
@@ -403,6 +412,25 @@ module YouFM
         filter_explicit_content?
       end
       # rubocop:enable Naming/PredicateMethod
+
+      def update_seed_replay_settings(enabled:, interval:)
+        normalized_interval = normalize_positive_integer(interval)
+        return update_status('Seed replay interval must be a positive integer') if enabled && normalized_interval.nil?
+
+        recommendation_coordinator.seed_replay_interval = normalized_interval || DEFAULT_SEED_REPLAY_INTERVAL
+        recommendation_coordinator.replay_seed_before_recommendation = enabled
+
+        if replay_seed_before_recommendation?
+          update_status("Seed replay enabled: every #{seed_replay_interval} recommendation(s)")
+        else
+          update_status('Seed replay disabled')
+        end
+
+        {
+          enabled: replay_seed_before_recommendation?,
+          interval: seed_replay_interval
+        }
+      end
 
       def apply_similar_artist_pool_limit(value)
         parsed = normalize_similar_artist_pool_limit(value)

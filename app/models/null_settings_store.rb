@@ -13,6 +13,10 @@ module YouFM
       def write_enabled_recommendation_strategy_names(_names) = nil
       def read_exclude_explicit_recommendations = nil
       def write_exclude_explicit_recommendations(_value) = nil
+      def read_replay_seed_before_recommendation = nil
+      def write_replay_seed_before_recommendation(_value) = nil
+      def read_seed_replay_interval = nil
+      def write_seed_replay_interval(_value) = nil
     end
   end
 end

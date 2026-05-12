@@ -254,35 +254,35 @@ module YouFM
       end
 
       def render_page
-        state = log_render_step('state') { view_model.state }
-        pool_limit = log_render_step('similar_artist_pool_limit') { view_model.similar_artist_pool_limit }
-        minimum_queue_size = log_render_step('minimum_recommended_queue_size') do
-          view_model.minimum_recommended_queue_size
-        end
-        strategy_labels = log_render_step('recommendation_strategy_labels') do
-          view_model.recommendation_strategy_labels
-        end
-        enabled_strategies = log_render_step('enabled_recommendation_strategy_names') do
-          view_model.enabled_recommendation_strategy_names
-        end
-        exclude_explicit = log_render_step('exclude_explicit_recommendations') do
-          view_model.filter_explicit_content?
-        end
-
-        log_render_step('html') do
-          renderer.render(
-            state:,
-            pool_limit:,
-            minimum_queue_size:,
-            strategy_labels:,
-            enabled_strategies:,
-            exclude_explicit:
-          )
-        end
+        render_payload = build_render_payload
+        log_render_step('html') { renderer.render(**render_payload) }
       end
 
       def renderer
         @renderer ||= WebUi::Renderer.new
+      end
+
+      def build_render_payload
+        {
+          state: log_render_step('state') { view_model.state },
+          pool_limit: log_render_step('similar_artist_pool_limit') { view_model.similar_artist_pool_limit },
+          minimum_queue_size: log_render_step('minimum_recommended_queue_size') do
+            view_model.minimum_recommended_queue_size
+          end,
+          strategy_labels: log_render_step('recommendation_strategy_labels') do
+            view_model.recommendation_strategy_labels
+          end,
+          enabled_strategies: log_render_step('enabled_recommendation_strategy_names') do
+            view_model.enabled_recommendation_strategy_names
+          end,
+          exclude_explicit: log_render_step('exclude_explicit_recommendations') do
+            view_model.filter_explicit_content?
+          end,
+          replay_seed_before_recommendation: log_render_step('replay_seed_before_recommendation') do
+            view_model.replay_seed_before_recommendation?
+          end,
+          seed_replay_interval: log_render_step('seed_replay_interval') { view_model.seed_replay_interval }
+        }
       end
 
       def log_request_timing(label, started_at)
@@ -413,6 +413,14 @@ module YouFM
         settings_store.write_enabled_recommendation_strategy_names(enabled_strategies)
         exclude_explicit = view_model.filter_explicit_content = (params['exclude_explicit'] == '1')
         settings_store.write_exclude_explicit_recommendations(exclude_explicit)
+        replay_settings = view_model.update_seed_replay_settings(
+          enabled: params['replay_seed_before_recommendation'] == '1',
+          interval: params['seed_replay_interval'].to_s
+        )
+        return unless replay_settings.is_a?(Hash)
+
+        settings_store.write_replay_seed_before_recommendation(replay_settings.fetch(:enabled))
+        settings_store.write_seed_replay_interval(replay_settings.fetch(:interval))
       end
 
       def use_device_action(params)

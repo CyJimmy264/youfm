@@ -5,14 +5,22 @@ module YouFM
     class RecommendationStrategySelector
       attr_reader :widget
 
-      def initialize(parent:, strategy_labels:, enabled_names:, exclude_explicit:)
+      def initialize(parent:, strategy_labels:, enabled_names:, exclude_explicit:, replay_seed_before_recommendation:,
+                     seed_replay_interval:)
         @widget = QWidget.new(parent)
         @strategy_labels = strategy_labels
         @checkboxes = {}
         @exclude_explicit_checkbox = nil
+        @replay_seed_checkbox = nil
+        @seed_replay_interval_input = nil
         @applying = false
         build_layout
-        apply_state(enabled_names:, exclude_explicit:)
+        apply_state(
+          enabled_names: enabled_names,
+          exclude_explicit: exclude_explicit,
+          replay_seed_before_recommendation: replay_seed_before_recommendation,
+          seed_replay_interval: seed_replay_interval
+        )
       end
 
       def on_change(&)
@@ -25,20 +33,23 @@ module YouFM
         end
       end
 
-      def apply_state(enabled_names:, exclude_explicit:)
+      def apply_state(enabled_names:, exclude_explicit:, replay_seed_before_recommendation:, seed_replay_interval:)
         @applying = true
         enabled = Array(enabled_names).map(&:to_sym)
         checkboxes.each do |name, checkbox|
           checkbox.checked = enabled.include?(name)
         end
         exclude_explicit_checkbox.checked = exclude_explicit == true
+        replay_seed_checkbox.checked = replay_seed_before_recommendation == true
+        seed_replay_interval_input.text = seed_replay_interval.to_s
       ensure
         @applying = false
       end
 
       private
 
-      attr_reader :strategy_labels, :checkboxes, :exclude_explicit_checkbox
+      attr_reader :strategy_labels, :checkboxes, :exclude_explicit_checkbox, :replay_seed_checkbox,
+                  :seed_replay_interval_input
 
       def build_layout
         layout = QVBoxLayout.new(widget)
@@ -60,6 +71,24 @@ module YouFM
           end
           @exclude_explicit_checkbox = build_checkbox('Exclude explicit content')
           layout.add_widget(exclude_explicit_checkbox)
+          layout.add_widget(seed_replay_row)
+        end
+      end
+
+      def seed_replay_row
+        QWidget.new(widget).tap do |container|
+          layout = QHBoxLayout.new(container)
+          layout.set_contents_margins(0, 0, 0, 0)
+          layout.spacing = 8
+          @replay_seed_checkbox = build_checkbox('Replay seed before recommendation')
+          layout.add_widget(replay_seed_checkbox)
+          @seed_replay_interval_input = QLineEdit.new(container)
+          seed_replay_interval_input.object_name = 'search_input'
+          seed_replay_interval_input.placeholder_text = 'Every N'
+          seed_replay_interval_input.maximum_width = 84
+          seed_replay_interval_input.connect('returnPressed()') { emit_change }
+          layout.add_widget(seed_replay_interval_input)
+          layout.add_stretch(1)
         end
       end
 
@@ -82,7 +111,12 @@ module YouFM
       def emit_change
         return if @applying
 
-        @on_change&.call(enabled_names, exclude_explicit_checkbox.is_checked)
+        @on_change&.call(
+          enabled_names,
+          exclude_explicit_checkbox.is_checked,
+          replay_seed_checkbox.is_checked,
+          seed_replay_interval_input.text.to_s
+        )
       end
     end
   end

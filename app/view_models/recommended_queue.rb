@@ -37,9 +37,8 @@ module YouFM
       def append(track, seed_label)
         mutex.synchronize do
           track_ids << track.id.to_s
-          track_ids.uniq!
           state.queue_recommendation_seeds = state.queue_recommendation_seeds.merge(track.id.to_s => seed_label.to_s)
-          state.queue_tracks = filter_recently_played([*state.queue_tracks, track].uniq(&:id))
+          state.queue_tracks = filter_recently_played([*state.queue_tracks, track])
           normalize_selection!
           update_selected_seed!
           persist
@@ -52,11 +51,9 @@ module YouFM
         return if normalized_track_id.empty?
 
         mutex.synchronize do
-          track_ids.reject! { |queued_id| queued_id == normalized_track_id }
-          state.queue_tracks = state.queue_tracks.reject { |track| track.id.to_s == normalized_track_id }
-          state.queue_recommendation_seeds = state.queue_recommendation_seeds.reject do |queued_track_id, _seed|
-            queued_track_id == normalized_track_id
-          end
+          delete_first(track_ids, normalized_track_id)
+          delete_first_track(normalized_track_id)
+          retain_visible_seeds!
           normalize_selection!
           update_selected_seed!
           persist
@@ -125,6 +122,16 @@ module YouFM
       def retain_visible_seeds!
         visible_track_ids = state.queue_tracks.map { |track| track.id.to_s }
         state.queue_recommendation_seeds = state.queue_recommendation_seeds.slice(*visible_track_ids)
+      end
+
+      def delete_first(items, value)
+        index = items.index(value)
+        items.delete_at(index) if index
+      end
+
+      def delete_first_track(track_id)
+        index = state.queue_tracks.index { |track| track.id.to_s == track_id }
+        state.queue_tracks.delete_at(index) if index
       end
 
       def normalize_selection!

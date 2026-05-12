@@ -189,10 +189,12 @@ module YouFM
           parent: window,
           strategy_labels: view_model.recommendation_strategy_labels,
           enabled_names: view_model.enabled_recommendation_strategy_names,
-          exclude_explicit: view_model.filter_explicit_content?
+          exclude_explicit: view_model.filter_explicit_content?,
+          replay_seed_before_recommendation: view_model.replay_seed_before_recommendation?,
+          seed_replay_interval: view_model.seed_replay_interval
         )
-        recommendation_strategy_selector.on_change do |enabled_names, exclude_explicit|
-          handle_recommendation_settings_toggle(enabled_names, exclude_explicit)
+        recommendation_strategy_selector.on_change do |enabled_names, exclude_explicit, replay_seed, interval|
+          handle_recommendation_settings_toggle(enabled_names, exclude_explicit, replay_seed, interval)
         end
         layout.add_widget(recommendation_strategy_selector.widget)
       end
@@ -458,11 +460,16 @@ module YouFM
         Services::Logger.warn("[youfm] save numeric settings failed: #{e.class}: #{e.message}")
       end
 
-      def handle_recommendation_settings_toggle(enabled_names, exclude_explicit)
+      def handle_recommendation_settings_toggle(enabled_names, exclude_explicit, replay_seed, interval)
         applied_names = view_model.update_enabled_recommendation_strategy_names(enabled_names)
         settings_store.write_enabled_recommendation_strategy_names(applied_names)
         applied_exclude_explicit = view_model.filter_explicit_content = exclude_explicit
         settings_store.write_exclude_explicit_recommendations(applied_exclude_explicit)
+        replay_settings = view_model.update_seed_replay_settings(enabled: replay_seed, interval: interval)
+        if replay_settings.is_a?(Hash)
+          settings_store.write_replay_seed_before_recommendation(replay_settings.fetch(:enabled))
+          settings_store.write_seed_replay_interval(replay_settings.fetch(:interval))
+        end
         render_status
       rescue StandardError => e
         Services::Logger.warn("[youfm] save recommendation strategies failed: #{e.class}: #{e.message}")
@@ -598,9 +605,19 @@ module YouFM
         view_model.update_enabled_recommendation_strategy_names(saved_names) if saved_names
         saved_exclude_explicit = settings_store.read_exclude_explicit_recommendations
         view_model.filter_explicit_content = saved_exclude_explicit unless saved_exclude_explicit.nil?
+        saved_seed_replay_enabled = settings_store.read_replay_seed_before_recommendation
+        saved_seed_replay_interval = settings_store.read_seed_replay_interval
+        unless saved_seed_replay_enabled.nil? && saved_seed_replay_interval.nil?
+          view_model.update_seed_replay_settings(
+            enabled: saved_seed_replay_enabled == true,
+            interval: (saved_seed_replay_interval || view_model.seed_replay_interval).to_s
+          )
+        end
         recommendation_strategy_selector.apply_state(
           enabled_names: view_model.enabled_recommendation_strategy_names,
-          exclude_explicit: view_model.filter_explicit_content?
+          exclude_explicit: view_model.filter_explicit_content?,
+          replay_seed_before_recommendation: view_model.replay_seed_before_recommendation?,
+          seed_replay_interval: view_model.seed_replay_interval
         )
       rescue StandardError => e
         Services::Logger.warn("[youfm] load recommendation strategies failed: #{e.class}: #{e.message}")

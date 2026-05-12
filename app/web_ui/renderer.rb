@@ -8,7 +8,8 @@ module YouFM
     class Renderer
       TEMPLATE_DIR = File.expand_path('templates', __dir__)
 
-      def render(state:, pool_limit:, minimum_queue_size:, strategy_labels:, enabled_strategies:, exclude_explicit:)
+      def render(state:, pool_limit:, minimum_queue_size:, strategy_labels:, enabled_strategies:, exclude_explicit:,
+                 replay_seed_before_recommendation:, seed_replay_interval:)
         TemplateContext.new(
           state: state,
           pool_limit: pool_limit,
@@ -16,6 +17,8 @@ module YouFM
           strategy_labels: strategy_labels,
           enabled_strategies: enabled_strategies,
           exclude_explicit: exclude_explicit,
+          replay_seed_before_recommendation: replay_seed_before_recommendation,
+          seed_replay_interval: seed_replay_interval,
           stylesheet: stylesheet,
           javascript: javascript
         ).render(template)
@@ -37,19 +40,23 @@ module YouFM
 
       class TemplateContext
         def initialize(state:, pool_limit:, minimum_queue_size:, strategy_labels:, enabled_strategies:,
-                       exclude_explicit:, stylesheet:, javascript:)
+                       exclude_explicit:, replay_seed_before_recommendation:, seed_replay_interval:, stylesheet:,
+                       javascript:)
           @state = state
           @pool_limit = pool_limit
           @minimum_queue_size = minimum_queue_size
           @strategy_labels = strategy_labels
           @enabled_strategies = enabled_strategies
           @exclude_explicit = exclude_explicit
+          @replay_seed_before_recommendation = replay_seed_before_recommendation
+          @seed_replay_interval = seed_replay_interval
           @stylesheet = stylesheet
           @javascript = javascript
         end
 
         attr_reader :state, :pool_limit, :minimum_queue_size, :strategy_labels, :enabled_strategies,
-                    :exclude_explicit, :stylesheet, :javascript
+                    :exclude_explicit, :replay_seed_before_recommendation, :seed_replay_interval, :stylesheet,
+                    :javascript
 
         def render(template)
           template.result(binding)
@@ -130,6 +137,7 @@ module YouFM
             HTML
           end.join
           explicit_checked = exclude_explicit ? ' checked' : ''
+          replay_seed_checked = replay_seed_before_recommendation ? ' checked' : ''
 
           <<~HTML
             <form class="strategies-form" method="post" action="/action">
@@ -140,6 +148,11 @@ module YouFM
                 <label class="checkbox-label">
                   <input type="checkbox" name="exclude_explicit" value="1"#{explicit_checked}>
                   <span>Exclude explicit content</span>
+                </label>
+                <label class="checkbox-label checkbox-inline-setting">
+                  <input type="checkbox" name="replay_seed_before_recommendation" value="1"#{replay_seed_checked}>
+                  <span>Replay seed before recommendation</span>
+                  <input name="seed_replay_interval" value="#{escape(seed_replay_interval)}" class="inline-number">
                 </label>
               </div>
               <button type="submit">Apply</button>

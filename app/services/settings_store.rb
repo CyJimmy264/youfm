@@ -47,6 +47,22 @@ module YouFM
         write_payload(payload.merge('exclude_explicit_recommendations' => value == true))
       end
 
+      def read_replay_seed_before_recommendation
+        payload.fetch('replay_seed_before_recommendation', nil)
+      end
+
+      def write_replay_seed_before_recommendation(value)
+        write_payload(payload.merge('replay_seed_before_recommendation' => value == true))
+      end
+
+      def read_seed_replay_interval
+        payload.fetch('seed_replay_interval', nil)
+      end
+
+      def write_seed_replay_interval(value)
+        write_payload(payload.merge('seed_replay_interval' => value.to_i))
+      end
+
       private
 
       attr_reader :path

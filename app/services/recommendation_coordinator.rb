@@ -6,13 +6,15 @@ module YouFM
       MAX_RECOMMENDATION_ATTEMPTS = 5
       MAX_TRANSIENT_RETRIES = 3
       TRANSIENT_RETRY_BASE_DELAY_SECONDS = 5
+      DEFAULT_SEED_REPLAY_INTERVAL = 1
 
-      Outcome = Struct.new(:status, :message, :track, :seed_label, keyword_init: true) do
-        def self.success(track:, seed_label:)
+      Outcome = Struct.new(:status, :message, :track, :seed_track, :seed_label, keyword_init: true) do
+        def self.success(track:, seed_track:, seed_label:)
           new(
             status: :success,
             message: "Added recommendation to Spotify queue: #{track.display_label}",
             track: track,
+            seed_track: seed_track,
             seed_label: seed_label
           )
         end
@@ -60,6 +62,9 @@ module YouFM
         @worker_starting = false
         @worker_mutex = Mutex.new
         @perform_mutex = Mutex.new
+        @replay_seed_before_recommendation = false
+        @seed_replay_interval = DEFAULT_SEED_REPLAY_INTERVAL
+        @successful_recommendation_count = 0
       end
 
       def similar_artist_pool_limit
@@ -84,6 +89,21 @@ module YouFM
 
       def exclude_explicit=(value)
         recommendation_generator.exclude_explicit = value
+      end
+
+      def replay_seed_before_recommendation?
+        @replay_seed_before_recommendation
+      end
+
+      def replay_seed_before_recommendation=(value)
+        @replay_seed_before_recommendation = value == true
+      end
+
+      attr_reader :seed_replay_interval
+
+      def seed_replay_interval=(value)
+        interval = value.to_i
+        @seed_replay_interval = interval.positive? ? interval : DEFAULT_SEED_REPLAY_INTERVAL
       end
 
       def reset
@@ -213,7 +233,7 @@ module YouFM
           return Outcome.not_added(trigger: trigger, reason: :duplicate)
         end
 
-        Outcome.success(track: recommended_track, seed_label: seed_label)
+        Outcome.success(track: recommended_track, seed_track: recommendation.seed_track, seed_label: seed_label)
       end
 
       def retry_outcome?(outcome, recommendation_attempt)
@@ -221,9 +241,23 @@ module YouFM
       end
 
       def apply_outcome(outcome, append_track)
+        enqueue_seed_track(outcome, append_track) if replay_seed_for?(outcome)
         source.add_to_queue(outcome.track)
         seed_store.save(outcome.track.id, outcome.seed_label, label: outcome.track.display_label)
         append_track.call(outcome.track, outcome.seed_label)
+        @successful_recommendation_count += 1
+      end
+
+      def replay_seed_for?(outcome)
+        replay_seed_before_recommendation? &&
+          !outcome.seed_track.nil? &&
+          ((@successful_recommendation_count + 1) % seed_replay_interval).zero?
+      end
+
+      def enqueue_seed_track(outcome, append_track)
+        source.add_to_queue(outcome.seed_track)
+        seed_store.save(outcome.seed_track.id, outcome.seed_label, label: outcome.seed_track.display_label)
+        append_track.call(outcome.seed_track, outcome.seed_label)
       end
 
       def publish_outcome(outcome, update_status)

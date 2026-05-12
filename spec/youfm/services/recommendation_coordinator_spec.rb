@@ -66,6 +66,27 @@ RSpec.describe YouFM::Services::RecommendationCoordinator do
     expect(context[:updates]).to eq(['Added recommendation to Spotify queue: Recommended - Artist'])
   end
 
+  it 'can replay the seed before the recommendation at the configured interval' do
+    recommended_track = build_track('recommended', 'Recommended')
+    seed_track = build_track('seed', 'Track seed')
+    allow(generator).to receive(:generate_with_seed).and_return(build_recommendation(track: recommended_track,
+                                                                                     seed_track: seed_track))
+    allow(source).to receive(:add_to_queue)
+
+    coordinator = build_coordinator
+    coordinator.replay_seed_before_recommendation = true
+    coordinator.seed_replay_interval = 1
+    context = enqueue_context
+    coordinator.enqueue(**context.except(:updates, :appended))
+
+    expect(source).to have_received(:add_to_queue).ordered.with(seed_track)
+    expect(source).to have_received(:add_to_queue).ordered.with(recommended_track)
+    expect(context[:appended]).to eq([
+                                       [seed_track, 'Track seed — Artist (Взят из плейлиста: Daily)'],
+                                       [recommended_track, 'Track seed — Artist (Взят из плейлиста: Daily)']
+                                     ])
+  end
+
   it 'does not add a duplicate recommendation' do
     recommended_track = build_track('recommended', 'Recommended')
     seed_track = build_track('seed', 'Track seed')

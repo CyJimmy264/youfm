@@ -154,6 +154,14 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     expect(view_model.state.status_message).to eq('Explicit content filter disabled')
   end
 
+  it 'updates seed replay settings' do
+    view_model = build_view_model
+    result = view_model.update_seed_replay_settings(enabled: true, interval: '4')
+
+    expect(result).to eq(enabled: true, interval: 4)
+    expect(view_model.state.status_message).to eq('Seed replay enabled: every 4 recommendation(s)')
+  end
+
   it 'updates the minimum recommended queue size' do
     view_model = build_view_model
     result = view_model.update_minimum_recommended_queue_size('3')
