@@ -40,7 +40,7 @@ module YouFM
       )
 
       def initialize(source:, recommendation_coordinator:, recommendation_seed_store:, lastfm_authenticator:,
-                     recommended_queue_store: nil)
+                     recommended_queue_store: nil, recommendation_history_store: nil)
         @source = source
         @recommendation_coordinator = recommendation_coordinator
         @recommendation_seed_store = recommendation_seed_store
@@ -50,6 +50,8 @@ module YouFM
         @last_recommendation_seed_track_id = nil
         @now_playing_recommendation_seeds = {}
         @next_queue_refresh_at = nil
+        @recommendation_history_store = recommendation_history_store
+        @recommendation_history_track_ids = load_recommendation_history
         initialize_state_notifier
         @state = State.new(
           source_name: source.name,
@@ -623,6 +625,7 @@ module YouFM
 
       def append_recommended_track_to_local_queue(track, seed_label)
         queue_size = recommended_queue.append(track, seed_label)
+        remember_recommendation_history(track.id)
         enqueue_recommendation_async(trigger: :queue_fill) if queue_size < minimum_recommended_queue_size
       end
 
@@ -689,7 +692,7 @@ module YouFM
       end
 
       def blocked_recommendation_track_ids
-        recommended_queue.blocked_track_ids
+        (recommended_queue.blocked_track_ids + @recommendation_history_track_ids).uniq
       end
 
       def remove_track_from_local_queue(track_id)
@@ -740,6 +743,24 @@ module YouFM
           append_track: method(:append_recommended_track_to_local_queue),
           update_status: method(:update_status)
         }
+      end
+
+      def load_recommendation_history
+        Array(@recommendation_history_store&.load).map(&:to_s).reject(&:empty?).uniq
+      rescue StandardError => e
+        Services::Logger.warn("[youfm] load recommendation history failed: #{e.class}: #{e.message}")
+        []
+      end
+
+      def remember_recommendation_history(track_id)
+        normalized_track_id = track_id.to_s
+        return if normalized_track_id.empty?
+        return if @recommendation_history_track_ids.include?(normalized_track_id)
+
+        @recommendation_history_track_ids << normalized_track_id
+        @recommendation_history_store&.remember(normalized_track_id)
+      rescue StandardError => e
+        Services::Logger.warn("[youfm] persist recommendation history failed: #{e.class}: #{e.message}")
       end
 
       def load_library_snapshot

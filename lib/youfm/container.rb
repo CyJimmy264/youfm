@@ -37,6 +37,7 @@ module YouFM
       register(:spotify_token_store) { Services::SpotifyTokenStore.new }
       register(:spotify_playlist_cache) { Services::SpotifyPlaylistCache.new }
       register(:recommendation_seed_store) { Services::RecommendationSeedStore.new }
+      register(:recommendation_history_store) { Services::RecommendationHistoryStore.new }
       register(:recommended_queue_store) { Services::RecommendedQueueStore.new }
       register(:browser_launcher) { Services::BrowserLauncher.new }
     end
@@ -111,6 +112,7 @@ module YouFM
           recommendation_coordinator: fetch(:recommendation_coordinator),
           recommendation_seed_store: fetch(:recommendation_seed_store),
           recommended_queue_store: fetch(:recommended_queue_store),
+          recommendation_history_store: fetch(:recommendation_history_store),
           lastfm_authenticator: fetch(:lastfm_authenticator)
         )
       end

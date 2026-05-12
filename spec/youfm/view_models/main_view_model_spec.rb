@@ -2,6 +2,7 @@
 
 require 'spec_helper'
 
+# rubocop:disable RSpec/MultipleMemoizedHelpers
 RSpec.describe YouFM::ViewModels::MainViewModel do
   let(:source) do
     instance_double(
@@ -37,6 +38,9 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
       configured?: false
     )
   end
+  let(:recommendation_history_store) do
+    instance_double(YouFM::Services::RecommendationHistoryStore, load: [], remember: nil)
+  end
 
   before do
     allow(Thread).to receive(:new).and_wrap_original do |_original, *args, &block|
@@ -51,6 +55,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
       recommendation_coordinator: recommendation_coordinator,
       recommendation_seed_store: recommendation_seed_store,
       recommended_queue_store: recommended_queue_store,
+      recommendation_history_store: recommendation_history_store,
       lastfm_authenticator: lastfm_authenticator
     )
   end
@@ -169,6 +174,66 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     expect(result).to eq(3)
     expect(view_model.minimum_recommended_queue_size).to eq(3)
     expect(view_model.state.status_message).to eq('Minimum recommended queue size set to 3')
+  end
+
+  it 'blocks tracks that were already stored in recommendation history' do
+    historical_track = YouFM::Models::Track.new(
+      id: 'history-track',
+      title: 'History Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:history-track',
+      duration_ms: 1
+    )
+    seed_track = YouFM::Models::Track.new(
+      id: 'seed',
+      title: 'Seed',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:seed',
+      duration_ms: 1
+    )
+    allow(recommendation_history_store).to receive(:load).and_return(['history-track'])
+    allow(recommendation_generator).to receive(:generate_with_seed).and_return(
+      build_recommendation(track: historical_track, seed_track: seed_track),
+      nil
+    )
+
+    view_model = build_view_model
+    view_model.state.search_results = [seed_track]
+
+    expect(view_model.generate_recommendation).to eq(
+      'Recommendation not added: Last.fm/Spotify did not return a suitable track'
+    )
+  end
+
+  it 'persists newly queued recommendation ids into recommendation history' do
+    current_track = YouFM::Models::Track.new(
+      id: '1',
+      title: 'Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:1',
+      duration_ms: 1
+    )
+    recommended_track = YouFM::Models::Track.new(
+      id: '2',
+      title: 'Recommended',
+      artists: ['Another Artist'],
+      album: 'Album 2',
+      uri: 'spotify:track:2',
+      duration_ms: 1
+    )
+    allow(source).to receive(:add_to_queue).with(recommended_track)
+    allow(recommendation_generator).to receive(:generate_with_seed).and_return(
+      build_recommendation(track: recommended_track, seed_track: current_track)
+    )
+
+    view_model = build_view_model
+    view_model.state.search_results = [current_track]
+    view_model.generate_recommendation
+
+    expect(recommendation_history_store).to have_received(:remember).with('2')
   end
 
   it 'rejects invalid minimum recommended queue sizes' do
@@ -1139,3 +1204,4 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
       .to eq('Auto-recommendation not added: Last.fm/Spotify did not return a suitable track')
   end
 end
+# rubocop:enable RSpec/MultipleMemoizedHelpers

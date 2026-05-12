@@ -18,12 +18,14 @@ RSpec.describe YouFM::Container do
     )
   end
 
+  # rubocop:disable RSpec/ExampleLength
   it 'builds default graph and memoizes fetched dependencies' do
     theme = instance_double(YouFM::Styles::Theme)
     settings_store = instance_double(YouFM::Services::SettingsStore)
     token_store = instance_double(YouFM::Services::SpotifyTokenStore)
     spotify_playlist_cache = instance_double(YouFM::Services::SpotifyPlaylistCache)
     recommendation_seed_store = instance_double(YouFM::Services::RecommendationSeedStore)
+    recommendation_history_store = instance_double(YouFM::Services::RecommendationHistoryStore)
     recommended_queue_store = instance_double(YouFM::Services::RecommendedQueueStore)
     lastfm_token_store = instance_double(YouFM::Services::LastfmTokenStore, load: { 'key' => 'session-key' })
     lastfm_similar_artists_cache = instance_double(YouFM::Services::LastfmSimilarArtistsCache)
@@ -44,6 +46,7 @@ RSpec.describe YouFM::Container do
     allow(YouFM::Services::SpotifyTokenStore).to receive(:new).and_return(token_store)
     allow(YouFM::Services::SpotifyPlaylistCache).to receive(:new).and_return(spotify_playlist_cache)
     allow(YouFM::Services::RecommendationSeedStore).to receive(:new).and_return(recommendation_seed_store)
+    allow(YouFM::Services::RecommendationHistoryStore).to receive(:new).and_return(recommendation_history_store)
     allow(YouFM::Services::RecommendedQueueStore).to receive(:new).and_return(recommended_queue_store)
     allow(YouFM::Services::LastfmTokenStore).to receive(:new).and_return(lastfm_token_store)
     allow(YouFM::Services::LastfmSimilarArtistsCache).to receive(:new).and_return(lastfm_similar_artists_cache)
@@ -92,6 +95,7 @@ RSpec.describe YouFM::Container do
       recommendation_coordinator: recommendation_coordinator,
       recommendation_seed_store: recommendation_seed_store,
       recommended_queue_store: recommended_queue_store,
+      recommendation_history_store: recommendation_history_store,
       lastfm_authenticator: lastfm_authenticator
     ).and_return(view_model)
     allow(YouFM::Services::WebUiServer).to receive(:new).with(
@@ -109,4 +113,5 @@ RSpec.describe YouFM::Container do
     expect(container.fetch(:main_window)).to equal(main_window)
     expect(YouFM::Views::MainWindow).to have_received(:new).once
   end
+  # rubocop:enable RSpec/ExampleLength
 end
