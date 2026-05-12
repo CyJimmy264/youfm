@@ -516,6 +516,8 @@ module YouFM
       end
 
       def enqueue_recommendation(trigger:)
+        return if auto_recommendation_blocked?(trigger)
+
         recommendation_coordinator.enqueue(**recommendation_context(trigger))
       end
 
@@ -627,11 +629,11 @@ module YouFM
       end
 
       def append_recommended_track_to_local_queue(track, seed_label)
-        queue_size = recommended_queue.append(track, seed_label)
+        recommended_queue.append(track, seed_label)
         remember_recommendation_history(track.id)
-        return if queue_size >= maximum_recommended_queue_size
+        return if recommendation_queue_size >= maximum_recommended_queue_size
 
-        enqueue_recommendation_async(trigger: :queue_fill) if queue_size < minimum_recommended_queue_size
+        enqueue_recommendation_async(trigger: :queue_fill) if recommendation_queue_size < minimum_recommended_queue_size
       end
 
       def recommendation_seed_tracks
@@ -677,6 +679,8 @@ module YouFM
       end
 
       def enqueue_recommendation_async(trigger:)
+        return if auto_recommendation_blocked?(trigger)
+
         recommendation_coordinator.enqueue_async(**recommendation_context(trigger))
       end
 
@@ -698,6 +702,21 @@ module YouFM
 
       def blocked_recommendation_track_ids
         (recommended_queue.blocked_track_ids + @recommendation_history_track_ids).uniq
+      end
+
+      def recommendation_queue_size
+        state.queue_tracks.length
+      end
+
+      def auto_recommendation_blocked?(trigger)
+        return false if trigger == :manual
+        return false unless recommendation_queue_size >= maximum_recommended_queue_size
+
+        Services::Logger.info(
+          "[youfm] auto-recommendation skipped: queue size=#{recommendation_queue_size} " \
+          "max=#{maximum_recommended_queue_size} trigger=#{trigger}"
+        )
+        true
       end
 
       def remove_track_from_local_queue(track_id)

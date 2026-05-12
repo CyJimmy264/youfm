@@ -284,6 +284,49 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     expect(recommendation_generator).to have_received(:generate_with_seed).once
   end
 
+  it 'does not auto-generate on playback change when the queue is already at the maximum size' do
+    current_track = YouFM::Models::Track.new(
+      id: '1',
+      title: 'Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:1',
+      duration_ms: 1
+    )
+    next_track = YouFM::Models::Track.new(
+      id: '2',
+      title: 'Next Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:2',
+      duration_ms: 1
+    )
+    queued_track = YouFM::Models::Track.new(
+      id: '3',
+      title: 'Queued Track',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:3',
+      duration_ms: 1
+    )
+
+    allow(source).to receive(:current_playback).and_return(
+      YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: current_track, playing: true, progress_ms: 0),
+      YouFM::Models::PlaybackState.new(device_name: 'MacBook', track: next_track, playing: true, progress_ms: 0)
+    )
+    allow(recommendation_generator).to receive(:generate_with_seed)
+
+    view_model = build_view_model
+    view_model.update_maximum_recommended_queue_size('1')
+    view_model.state.queue_tracks = [queued_track]
+    view_model.state.search_results = [current_track, next_track]
+
+    view_model.refresh_playback
+    view_model.refresh_playback
+
+    expect(recommendation_generator).not_to have_received(:generate_with_seed)
+  end
+
   it 'rejects invalid similar artist pool limits' do
     allow(recommendation_generator).to receive(:similar_artist_pool_limit=)
 
