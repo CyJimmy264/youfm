@@ -69,7 +69,7 @@ RSpec.describe YouFM::Container do
     allow(YouFM::Services::LastfmClient).to receive(:new).with(
       api_key: 'lastfm-key',
       secret: 'lastfm-secret',
-      session_key: 'session-key',
+      session_key_provider: instance_of(Proc),
       similar_artists_cache: lastfm_similar_artists_cache,
       top_tracks_cache: instance_of(YouFM::Services::LastfmTopTracksCache)
     ).and_return(lastfm_client)

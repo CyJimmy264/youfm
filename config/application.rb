@@ -7,6 +7,7 @@ module YouFM
     def boot!
       setup_qt
       loader.setup
+      load_dotenv!
       load_environment!
       load_initializers!
       load_persisted_configuration!
@@ -56,6 +57,15 @@ module YouFM
     def load_environment!
       path = File.join(root, 'config', 'environments', "#{environment}.rb")
       require path if File.exist?(path)
+    end
+
+    def load_dotenv!
+      require 'dotenv'
+
+      env_files = [".env.#{environment}.local", '.env.local', ".env.#{environment}", '.env']
+      Dotenv.load(*env_files.map { |name| File.join(root, name) })
+    rescue LoadError
+      nil
     end
 
     def load_initializers!

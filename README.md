@@ -31,9 +31,11 @@ The app follows the same broad pattern as `qtimetrap`:
 The app now supports Spotify Authorization Code with PKCE inside the UI.
 You only need to provide Spotify app metadata:
 
-```bash
-export SPOTIFY_CLIENT_ID=...
-export SPOTIFY_REDIRECT_URI=http://127.0.0.1:8989/callback
+Create a `.env` file in the project root:
+
+```dotenv
+SPOTIFY_CLIENT_ID=...
+SPOTIFY_REDIRECT_URI=http://127.0.0.1:8989/callback
 ```
 
 The redirect URI must also be registered in your Spotify app settings.
@@ -50,12 +52,16 @@ You can still provide `SPOTIFY_ACCESS_TOKEN` manually, but the intended flow is 
 
 Optional:
 
-```bash
-export SPOTIFY_API_BASE_URL=https://api.spotify.com/v1
-export SPOTIFY_ACCOUNTS_BASE_URL=https://accounts.spotify.com
-export YOUFM_ENV=development
-export YOUFM_THEME=dark
+```dotenv
+SPOTIFY_API_BASE_URL=https://api.spotify.com/v1
+SPOTIFY_ACCOUNTS_BASE_URL=https://accounts.spotify.com
+LASTFM_API_KEY=...
+LASTFM_SECRET=...
+YOUFM_ENV=development
+YOUFM_THEME=dark
 ```
+
+`dotenv` loads `.env`, `.env.local`, `.env.development`, and `.env.development.local` automatically at boot.
 
 ## Run
 

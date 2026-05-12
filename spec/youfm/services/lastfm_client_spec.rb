@@ -149,4 +149,26 @@ RSpec.describe YouFM::Services::LastfmClient do
       expect(cache).to have_received(:save).with('Air', period: '12month', limit: 20, tracks: tracks)
     end
   end
+
+  describe 'session key resolution' do
+    it 'uses the current session key from the provider for signed requests' do
+      response = http_response(code: '200', body: JSON.dump('similarartists' => { 'artist' => [] }))
+      http_client = http_client_with(response)
+      token_store = instance_double(YouFM::Services::LastfmTokenStore)
+      allow(token_store).to receive(:load).and_return({ 'key' => 'new-session-key' })
+      client = described_class.new(
+        api_key: 'key',
+        secret: 'secret',
+        session_key: 'stale-session-key',
+        session_key_provider: -> { token_store.load['key'] },
+        api_http_client: http_client
+      )
+
+      client.get_similar_artists('Air')
+
+      expect(http_client).to have_received(:request).with(
+        have_attributes(uri: have_attributes(query: include('sk=new-session-key')))
+      )
+    end
+  end
 end

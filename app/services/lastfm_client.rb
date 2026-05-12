@@ -20,11 +20,13 @@ module YouFM
       WEB_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 ' \
                        '(KHTML, like Gecko) Chrome/123.0 Safari/537.36'
 
-      def initialize(api_key:, secret:, session_key: nil, base_url: 'http://ws.audioscrobbler.com/2.0/',
-                     similar_artists_cache: nil, top_tracks_cache: nil, api_http_client: nil, web_http_client: nil)
+      def initialize(api_key:, secret:, session_key: nil, session_key_provider: nil,
+                     base_url: 'http://ws.audioscrobbler.com/2.0/', similar_artists_cache: nil,
+                     top_tracks_cache: nil, api_http_client: nil, web_http_client: nil)
         @api_key = api_key
         @secret = secret
         @session_key = session_key
+        @session_key_provider = session_key_provider
         @base_url = base_url
         @similar_artists_cache = similar_artists_cache
         @top_tracks_cache = top_tracks_cache
@@ -96,7 +98,7 @@ module YouFM
 
       private
 
-      attr_reader :api_key, :secret, :session_key, :base_url, :similar_artists_cache, :top_tracks_cache
+      attr_reader :api_key, :secret, :base_url, :similar_artists_cache, :top_tracks_cache
 
       def fetch_similar_artists_via_api(artist_name)
         body = get({ method: 'artist.getSimilar', artist: artist_name }, signed: true)
@@ -135,7 +137,8 @@ module YouFM
       def get(params = {}, signed: false)
         params[:api_key] = api_key
         params[:format] = 'json'
-        params[:sk] = session_key if signed && session_key
+        active_session_key = current_session_key
+        params[:sk] = active_session_key if signed && active_session_key
         params[:api_sig] = sign(params) if signed
 
         uri = build_uri(params)
@@ -316,6 +319,13 @@ module YouFM
 
       def normalize_name(value)
         value.to_s.downcase.gsub(/\s+/, ' ').strip
+      end
+
+      def current_session_key
+        provided_session_key = @session_key_provider&.call.to_s.strip
+        return provided_session_key unless provided_session_key.empty?
+
+        @session_key.to_s.strip
       end
     end
   end

@@ -22,8 +22,8 @@ module YouFM
         playlist-read-collaborative
       ]
       @enable_reloading = environment == 'development'
-      @lastfm_api_key = ''
-      @lastfm_secret = ''
+      @lastfm_api_key = ENV.fetch('LASTFM_API_KEY', '')
+      @lastfm_secret = ENV.fetch('LASTFM_SECRET', '')
     end
   end
 end
