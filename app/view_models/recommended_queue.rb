@@ -60,9 +60,11 @@ module YouFM
         end
       end
 
-      def sync(spotify_queue_tracks)
+      def sync(spotify_queue_tracks, fallback_seeds: {})
         mutex.synchronize do
-          recommended_track_ids = track_ids.to_set
+          normalized_fallback_seeds = normalize_seed_map(fallback_seeds)
+          recommended_track_ids = (track_ids + normalized_fallback_seeds.keys).to_set
+          state.queue_recommendation_seeds = state.queue_recommendation_seeds.merge(normalized_fallback_seeds)
           state.queue_tracks = filter_recently_played(spotify_queue_tracks).select do |track|
             recommended_track_ids.include?(track.id.to_s)
           end
@@ -122,6 +124,18 @@ module YouFM
       def retain_visible_seeds!
         visible_track_ids = state.queue_tracks.map { |track| track.id.to_s }
         state.queue_recommendation_seeds = state.queue_recommendation_seeds.slice(*visible_track_ids)
+      end
+
+      def normalize_seed_map(seed_map)
+        return {} unless seed_map.is_a?(Hash)
+
+        seed_map.each_with_object({}) do |(track_id, seed_label), result|
+          normalized_track_id = track_id.to_s
+          normalized_seed_label = seed_label.to_s
+          next if normalized_track_id.empty? || normalized_seed_label.empty?
+
+          result[normalized_track_id] = normalized_seed_label
+        end
       end
 
       def delete_first(items, value)

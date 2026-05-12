@@ -35,4 +35,15 @@ RSpec.describe YouFM::Services::RecommendationSeedStore do
     expired_store = described_class.new(path: path, ttl: 24 * 60 * 60, clock: -> { now + (25 * 60 * 60) })
     expect(expired_store.fetch('track-1')).to be_nil
   end
+
+  it 'returns existing unexpired seeds without consuming them' do
+    path = store_path
+    store = described_class.new(path: path)
+    seed_label = 'Seed — Artist (Взят из плейлиста: Daily)'
+
+    store.save('track-1', seed_label, label: 'Recommended - Artist')
+
+    expect(store.existing_for(%w[track-1 missing])).to eq('track-1' => seed_label)
+    expect(store.fetch('track-1')).to eq(seed_label)
+  end
 end

@@ -30,7 +30,14 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
       seed_store: recommendation_seed_store
     )
   end
-  let(:recommendation_seed_store) { instance_double(YouFM::Services::RecommendationSeedStore, fetch: nil, save: nil) }
+  let(:recommendation_seed_store) do
+    instance_double(
+      YouFM::Services::RecommendationSeedStore,
+      fetch: nil,
+      save: nil,
+      existing_for: {}
+    )
+  end
   let(:lastfm_authenticator) do
     instance_double(
       YouFM::Services::LastfmAuthenticator,
@@ -930,6 +937,40 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     expect(view_model.state.queue_tracks.map(&:display_label)).to eq(['Cached Track - Cached Artist'])
     expect(view_model.state.queue_recommendation_seeds).to eq(
       'cached-track' => 'Seed — Artist (Взят из плейлиста: Daily)'
+    )
+  end
+
+  it 'rebuilds the local recommendation queue from Spotify queue and persisted seeds after cache loss' do
+    generated_track = YouFM::Models::Track.new(
+      id: 'generated-track',
+      title: 'Generated',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:generated-track',
+      duration_ms: 1
+    )
+    allow(source).to receive_messages(
+      available_devices: [],
+      playlists: [],
+      queue: [generated_track],
+      current_playback: YouFM::Models::PlaybackState.new(
+        device_name: nil,
+        track: nil,
+        playing: false,
+        progress_ms: 0
+      )
+    )
+    allow(recommended_queue_store).to receive(:load).and_return(track_ids: [], tracks: [], seeds: {})
+    allow(recommendation_seed_store).to receive(:existing_for).with(['generated-track']).and_return(
+      'generated-track' => 'Seed — Artist (Взят из плейлиста: Daily)'
+    )
+
+    view_model = build_view_model
+    view_model.refresh_library
+
+    expect(view_model.state.queue_tracks).to eq([generated_track])
+    expect(view_model.state.queue_recommendation_seeds).to eq(
+      'generated-track' => 'Seed — Artist (Взят из плейлиста: Daily)'
     )
   end
 

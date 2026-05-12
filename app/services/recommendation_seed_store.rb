@@ -45,6 +45,24 @@ module YouFM
         persist_store(store)
       end
 
+      def existing_for(track_ids)
+        normalized_track_ids = Array(track_ids).map(&:to_s).reject(&:empty?)
+        return {} if normalized_track_ids.empty?
+
+        store = prune_expired(load_store)
+        persist_store(store) if store != @store
+
+        normalized_track_ids.each_with_object({}) do |track_id, result|
+          entry = store[track_id]
+          next unless entry.is_a?(Hash)
+
+          seed_label = entry['seed_label'].to_s
+          next if seed_label.empty?
+
+          result[track_id] = seed_label
+        end
+      end
+
       private
 
       attr_reader :path, :ttl, :clock

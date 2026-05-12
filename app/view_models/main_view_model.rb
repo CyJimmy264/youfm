@@ -724,7 +724,18 @@ module YouFM
       end
 
       def refresh_queue_tracks!
-        recommended_queue.sync(source.queue)
+        spotify_queue_tracks = source.queue
+        fallback_seeds = recommendation_seed_store.existing_for(spotify_queue_tracks.map(&:id))
+        Services::Logger.info(
+          "[youfm] queue sync: spotify_count=#{spotify_queue_tracks.length} " \
+          "spotify_ids=#{spotify_queue_tracks.map(&:id).join(',')} " \
+          "fallback_seed_ids=#{fallback_seeds.keys.join(',')}"
+        )
+        recommended_queue.sync(spotify_queue_tracks, fallback_seeds:)
+        Services::Logger.info(
+          "[youfm] queue sync result: local_count=#{state.queue_tracks.length} " \
+          "local_ids=#{state.queue_tracks.map(&:id).join(',')}"
+        )
       end
 
       def update_selected_queue_recommendation_seed
