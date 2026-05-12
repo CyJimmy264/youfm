@@ -5,7 +5,7 @@ module YouFM
     class Track
       extend Props
 
-      props :id, :title, :artists, :album, :uri, :duration_ms
+      props :id, :title, :artists, :album, :uri, :duration_ms, explicit: false
 
       def artist_line
         artists.join(', ')

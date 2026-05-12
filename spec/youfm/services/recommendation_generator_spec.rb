@@ -7,14 +7,15 @@ RSpec.describe YouFM::Services::RecommendationGenerator do
   let(:spotify_client) { instance_double(YouFM::Services::SpotifyClient) }
   let(:random) { instance_double(Random) }
 
-  def build_track(id:, title:, artist:, uri:)
+  def build_track(id:, title:, artist:, uri:, explicit: false)
     YouFM::Models::Track.new(
       id: id,
       title: title,
       artists: [artist],
       album: 'Album',
       uri: uri,
-      duration_ms: 1
+      duration_ms: 1,
+      explicit: explicit
     )
   end
 
@@ -65,6 +66,27 @@ RSpec.describe YouFM::Services::RecommendationGenerator do
     result = generator.generate_from_playlist([seed_track], playlist_name: 'Daily')
 
     expect(result).to eq(exact_match)
+  end
+
+  it 'skips explicit Spotify matches and keeps searching for a clean candidate' do
+    seed_track = build_track(id: 'seed', title: 'Seed', artist: 'Seed Artist', uri: 'spotify:track:seed')
+    similar_artist = YouFM::Services::LastfmClient::SimilarArtist.new(name: 'Similar Artist', match: 0.5)
+    top_track = YouFM::Services::LastfmClient::TopTrack.new(name: 'Song One', playcount: 100, listeners: 10)
+    explicit_match = build_track(id: 'explicit', title: 'Song One', artist: 'Similar Artist',
+                                 uri: 'spotify:track:explicit', explicit: true)
+    clean_match = build_track(id: 'clean', title: 'Song One', artist: 'Similar Artist', uri: 'spotify:track:clean')
+
+    allow(lastfm_client).to receive(:get_similar_artists).with('Seed Artist', limit: 200).and_return([similar_artist])
+    allow(lastfm_client).to receive(:get_top_tracks).with('Similar Artist', period: '12month',
+                                                                            limit: 20).and_return([top_track])
+    allow(spotify_client).to receive(:search_tracks).with('Song One artist:Similar Artist',
+                                                          limit: 10).and_return([explicit_match, clean_match])
+    allow(random).to receive(:rand).with(1).and_return(0)
+    generator = described_class.new(lastfm_client:, spotify_client:, random:)
+
+    result = generator.generate_from_playlist([seed_track], playlist_name: 'Daily')
+
+    expect(result).to eq(clean_match)
   end
 
   it 'moves to the next similar artist after three failed top-track attempts' do

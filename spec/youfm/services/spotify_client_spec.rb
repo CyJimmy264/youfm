@@ -38,7 +38,8 @@ RSpec.describe YouFM::Services::SpotifyClient do
               'artists' => [{ 'name' => 'Artist' }],
               'album' => { 'name' => 'Album' },
               'uri' => 'spotify:track:1',
-              'duration_ms' => 123_000
+              'duration_ms' => 123_000,
+              'explicit' => true
             }
           ]
         }
@@ -50,6 +51,7 @@ RSpec.describe YouFM::Services::SpotifyClient do
 
       expect(result.length).to eq(1)
       expect(result.first.display_label).to eq('Track - Artist')
+      expect(result.first.explicit).to be(true)
     end
 
     it 'retries search without limit when Spotify says the limit is invalid' do

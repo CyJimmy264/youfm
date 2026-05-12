@@ -12,6 +12,7 @@ module YouFM
         spotify_tracks = spotify_client.search_tracks(query, limit: 10)
         spotify_tracks.find do |track|
           next false if blocked_track_ids.include?(track.id.to_s)
+          next false if track.explicit
 
           spotify_track_matches?(track, generated_artist_name: artist_name, generated_title: track_name)
         end

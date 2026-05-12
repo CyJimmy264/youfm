@@ -131,7 +131,7 @@ module YouFM
           <<~HTML
             <form class="strategies-form" method="post" action="/action">
               <input type="hidden" name="name" value="apply_recommendation_strategies">
-              <div class="strategies-label">Recommendation Strategies</div>
+              <div class="strategies-heading">Recommendation Strategies</div>
               <div class="strategy-options">#{checkboxes}</div>
               <button type="submit">Apply</button>
             </form>

@@ -39,14 +39,23 @@ module YouFM
       attr_reader :strategy_labels, :checkboxes
 
       def build_layout
-        layout = QHBoxLayout.new(widget)
+        layout = QVBoxLayout.new(widget)
         layout.set_contents_margins(0, 0, 0, 0)
         layout.spacing = 8
         layout.add_widget(label)
-        strategy_labels.each do |name, text|
-          checkbox = build_checkbox(text)
-          checkboxes[name] = checkbox
-          layout.add_widget(checkbox)
+        layout.add_widget(checkboxes_widget)
+      end
+
+      def checkboxes_widget
+        QWidget.new(widget).tap do |container|
+          layout = QVBoxLayout.new(container)
+          layout.set_contents_margins(0, 0, 0, 0)
+          layout.spacing = 6
+          strategy_labels.each do |name, text|
+            checkbox = build_checkbox(text)
+            checkboxes[name] = checkbox
+            layout.add_widget(checkbox)
+          end
         end
       end
 

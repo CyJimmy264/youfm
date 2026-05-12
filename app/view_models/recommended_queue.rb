@@ -36,10 +36,10 @@ module YouFM
 
       def append(track, seed_label)
         mutex.synchronize do
-          track_ids.unshift(track.id.to_s)
+          track_ids << track.id.to_s
           track_ids.uniq!
           state.queue_recommendation_seeds = state.queue_recommendation_seeds.merge(track.id.to_s => seed_label.to_s)
-          state.queue_tracks = filter_recently_played([track, *state.queue_tracks].uniq(&:id))
+          state.queue_tracks = filter_recently_played([*state.queue_tracks, track].uniq(&:id))
           normalize_selection!
           update_selected_seed!
           persist

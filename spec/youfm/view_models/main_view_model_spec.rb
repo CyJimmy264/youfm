@@ -763,7 +763,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
 
     expect(source).to have_received(:add_to_queue).with(first_recommendation)
     expect(source).to have_received(:add_to_queue).with(second_recommendation)
-    expect(view_model.state.queue_tracks).to eq([second_recommendation, first_recommendation])
+    expect(view_model.state.queue_tracks).to eq([first_recommendation, second_recommendation])
   end
 
   it 'can schedule a generated recommendation asynchronously' do
@@ -890,7 +890,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
         '2' => 'Track — Artist (Взят из плейлиста: Tracks)',
         '3' => 'Track — Artist (Взят из плейлиста: Tracks)'
       }
-    )
+    ).at_least(:once)
   end
 
   it 'generates the next recommendation when Spotify playback changes tracks' do

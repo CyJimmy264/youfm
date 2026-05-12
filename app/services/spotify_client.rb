@@ -5,7 +5,7 @@ require 'httpx'
 module YouFM
   module Services
     class SpotifyClient
-      PLAYLIST_TRACK_FIELDS = 'items(item(id,type,name,artists(name),album(name),uri,duration_ms)),next'
+      PLAYLIST_TRACK_FIELDS = 'items(item(id,type,name,artists(name),album(name),uri,duration_ms,explicit)),next'
       class Error < StandardError; end
       class AuthenticationError < Error; end
       class PlaybackUnavailableError < Error; end
@@ -235,7 +235,8 @@ module YouFM
           artists: Array(item['artists']).filter_map { |artist| artist['name'] },
           album: item.dig('album', 'name').to_s,
           uri: item.fetch('uri', ''),
-          duration_ms: item.fetch('duration_ms', 0)
+          duration_ms: item.fetch('duration_ms', 0),
+          explicit: item['explicit'] == true
         )
       end
 
@@ -274,7 +275,8 @@ module YouFM
           'artists' => track.artists.map { |artist| { 'name' => artist } },
           'album' => { 'name' => track.album },
           'uri' => track.uri,
-          'duration_ms' => track.duration_ms
+          'duration_ms' => track.duration_ms,
+          'explicit' => track.explicit
         }
       end
 

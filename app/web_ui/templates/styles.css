@@ -67,13 +67,13 @@ select { min-width: 0; width: 100%; }
 form { margin: 0; }
 .pool { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .strategies-form {
-  display: grid;
-  grid-template-columns: auto minmax(240px, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
-  align-items: center;
+  align-items: flex-start;
 }
-.strategies-label { color: var(--muted); }
-.strategy-options { display: flex; flex-wrap: wrap; gap: 10px 16px; }
+.strategies-heading { color: var(--muted); }
+.strategy-options { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .checkbox-label { display: inline-flex; gap: 8px; align-items: center; color: var(--text); }
 .checkbox-label input { width: auto; min-height: 0; accent-color: var(--accent); }
 
