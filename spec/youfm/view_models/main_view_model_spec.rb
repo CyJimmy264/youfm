@@ -436,7 +436,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     allow(source).to receive(:cached_playlist_tracks).with(playlist, limit: 100).and_return(nil)
     allow(source).to receive(:cached_playlist_tracks_page).with(playlist, limit: 100, offset: 0).and_return(nil)
     allow(source).to receive(:playlist_tracks_page).with(playlist, limit: 100, offset: 0).and_return(
-      { tracks: [track], has_more: true }
+      { tracks: [track], has_more: false }
     )
 
     view_model = build_view_model
@@ -531,7 +531,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     allow(source).to receive(:cached_playlist_tracks_page).with(playlist, limit: 100, offset: 0).and_return(
       { tracks: [track], has_more: true }
     )
-    allow(Thread).to receive(:new)
+    allow(Thread).to receive(:new).and_return(instance_double(Thread))
 
     view_model = build_view_model
     view_model.state.playlists = [playlist]
@@ -539,7 +539,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
 
     expect(view_model.state.search_results).to eq([track])
     expect(view_model.state.tracks_loading_more).to be(false)
-    expect(Thread).not_to have_received(:new)
+    expect(Thread).to have_received(:new).once
   end
 
   it 'uses fully cached playlist contents immediately without lazy loading' do
@@ -593,7 +593,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
       duration_ms: 1
     )
     allow(source).to receive(:cached_playlist_tracks).with(playlist, limit: 100).and_return([first_track, second_track])
-    allow(Thread).to receive(:new)
+    allow(Thread).to receive(:new).and_return(instance_double(Thread))
 
     view_model = build_view_model
     view_model.state.playlists = [playlist]
@@ -601,7 +601,86 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
 
     expect(view_model.state.search_results).to eq([first_track, second_track])
     expect(view_model.state.tracks_loading_more).to be(false)
-    expect(Thread).not_to have_received(:new)
+    expect(Thread).to have_received(:new).once
+  end
+
+  it 'background loads remaining playlist tracks after showing cached partial contents' do
+    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me',
+                                           tracks_total: 200, snapshot_id: 'snap-1')
+    first_track = YouFM::Models::Track.new(
+      id: '1',
+      title: 'Track 1',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:1',
+      duration_ms: 1
+    )
+    second_track = YouFM::Models::Track.new(
+      id: '2',
+      title: 'Track 2',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:2',
+      duration_ms: 1
+    )
+    allow(source).to receive(:cached_playlist_tracks).with(playlist, limit: 100).and_return([first_track])
+    allow(source).to receive(:cached_playlist_tracks_page).with(playlist, limit: 100, offset: 1).and_return(
+      { tracks: [second_track], has_more: false }
+    )
+    allow(Thread).to receive(:new).and_wrap_original do |_original, *args, &block|
+      block.call(*args)
+      instance_double(Thread)
+    end
+    stub_const('YouFM::ViewModels::PlaylistTracksLoader::BACKGROUND_PREFETCH_DELAY_SECONDS', 0)
+
+    view_model = build_view_model
+    view_model.state.playlists = [playlist]
+    view_model.select_playlist_index(0)
+
+    expect(view_model.state.search_results).to eq([first_track, second_track])
+    expect(view_model.state.status_message).to eq('Loaded all 2 tracks from Daily')
+  end
+
+  it 'background loads remaining playlist tracks after the first network page' do
+    playlist = YouFM::Models::Playlist.new(id: 'p1', name: 'Daily', uri: 'spotify:playlist:1', owner_name: 'me',
+                                           tracks_total: 200, snapshot_id: 'snap-1')
+    first_track = YouFM::Models::Track.new(
+      id: '1',
+      title: 'Track 1',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:1',
+      duration_ms: 1
+    )
+    second_track = YouFM::Models::Track.new(
+      id: '2',
+      title: 'Track 2',
+      artists: ['Artist'],
+      album: 'Album',
+      uri: 'spotify:track:2',
+      duration_ms: 1
+    )
+    allow(source).to receive(:cached_playlist_tracks).with(playlist, limit: 100).and_return(nil)
+    allow(source).to receive(:cached_playlist_tracks_page).with(playlist, limit: 100, offset: 0).and_return(nil)
+    allow(source).to receive(:playlist_tracks_page).with(playlist, limit: 100, offset: 0).and_return(
+      { tracks: [first_track], has_more: true }
+    )
+    allow(source).to receive(:cached_playlist_tracks_page).with(playlist, limit: 100, offset: 1).and_return(nil)
+    allow(source).to receive(:playlist_tracks_page).with(playlist, limit: 100, offset: 1).and_return(
+      { tracks: [second_track], has_more: false }
+    )
+    allow(Thread).to receive(:new).and_wrap_original do |_original, *args, &block|
+      block.call(*args)
+      instance_double(Thread)
+    end
+    stub_const('YouFM::ViewModels::PlaylistTracksLoader::BACKGROUND_PREFETCH_DELAY_SECONDS', 0)
+
+    view_model = build_view_model
+    view_model.state.playlists = [playlist]
+    view_model.select_playlist_index(0)
+
+    expect(view_model.state.search_results).to eq([first_track, second_track])
+    expect(view_model.state.status_message).to eq('Loaded all 2 tracks from Daily')
   end
 
   it 'lazy loads more playlist tracks when requested' do

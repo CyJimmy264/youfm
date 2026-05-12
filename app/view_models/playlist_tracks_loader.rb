@@ -3,6 +3,8 @@
 module YouFM
   module ViewModels
     class PlaylistTracksLoader
+      BACKGROUND_PREFETCH_DELAY_SECONDS = 0.5
+
       def initialize(state:, source:, page_size:, update_status:, friendly_error_message:)
         @state = state
         @source = source
@@ -37,6 +39,7 @@ module YouFM
         if cached_page
           append_page(playlist, cached_page)
           on_loaded&.call
+          schedule_background_prefetch(playlist, on_loaded) if @has_more
           return
         end
 
@@ -58,6 +61,7 @@ module YouFM
         @offset = 0
         @has_more = false
         @loading = false
+        @background_prefetch_scheduled = false
         @loading_label = nil
         @loading_started_at = nil
         @loading_elapsed = nil
@@ -74,6 +78,7 @@ module YouFM
           apply_cached_tracks(playlist, cached_tracks)
           state.tracks_loading_more = false
           on_loaded&.call
+          schedule_background_prefetch(playlist, on_loaded) if @has_more
           return true
         end
 
@@ -81,8 +86,10 @@ module YouFM
         return false unless cached_page
 
         apply_page(playlist, cached_page)
+        append_cached_pages(playlist)
         state.tracks_loading_more = false
         on_loaded&.call
+        schedule_background_prefetch(playlist, on_loaded) if @has_more
         true
       end
 
@@ -92,6 +99,28 @@ module YouFM
 
       def cached_page_for(playlist)
         source.cached_playlist_tracks_page(playlist, limit: page_size, offset: @offset)
+      end
+
+      def append_cached_pages(playlist)
+        while @has_more
+          cached_page = cached_page_for(playlist)
+          break unless cached_page
+
+          append_page(playlist, cached_page)
+        end
+      end
+
+      def schedule_background_prefetch(playlist, on_loaded)
+        return unless can_load_more?(playlist)
+        return if @background_prefetch_scheduled
+
+        @background_prefetch_scheduled = true
+        Thread.new do
+          sleep(BACKGROUND_PREFETCH_DELAY_SECONDS)
+          load_more(playlist, &on_loaded) if can_load_more?(playlist)
+        ensure
+          @background_prefetch_scheduled = false
+        end
       end
 
       def load_more_async(playlist, on_loaded)
@@ -108,6 +137,7 @@ module YouFM
         ensure
           finish_loading!
           on_loaded&.call
+          schedule_background_prefetch(playlist, on_loaded) if @has_more
         end
       end
 
@@ -124,6 +154,7 @@ module YouFM
         ensure
           finish_loading!
           on_loaded&.call
+          schedule_background_prefetch(playlist, on_loaded) if @has_more
         end
       end
 
