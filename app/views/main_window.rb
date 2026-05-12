@@ -624,11 +624,22 @@ module YouFM
         return if revision == @last_seen_state_revision
 
         @last_seen_state_revision = revision
+        sync_settings_controls
         if tracks_panel.rendered_current?(view_model.state)
           render_status
         else
           @render_queue.push(:render_tracks)
         end
+      end
+
+      def sync_settings_controls
+        numeric_settings_panel.apply_current_values
+        recommendation_strategy_selector.apply_state(
+          enabled_names: view_model.enabled_recommendation_strategy_names,
+          exclude_explicit: view_model.filter_explicit_content?,
+          replay_seed_before_recommendation: view_model.replay_seed_before_recommendation?,
+          seed_replay_interval: view_model.seed_replay_interval
+        )
       end
 
       def render_devices(state)
