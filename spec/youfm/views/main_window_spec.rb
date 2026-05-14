@@ -39,4 +39,19 @@ RSpec.describe YouFM::Views::MainWindow do
       expect(window).to have_received(:render_status)
     end
   end
+
+  describe '#playback_inactive?' do
+    it 'treats paused playback as inactive for cold polling' do
+      state = instance_double(
+        YouFM::ViewModels::MainViewModel::State,
+        playing: false,
+        now_playing: 'Paused: Track - Artist'
+      )
+      view_model = instance_double(YouFM::ViewModels::MainViewModel, state: state)
+      window = described_class.allocate
+      window.instance_variable_set(:@view_model, view_model)
+
+      expect(window.send(:playback_inactive?)).to be(true)
+    end
+  end
 end

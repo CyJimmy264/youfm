@@ -191,7 +191,13 @@ module YouFM
         sync_connection_state!
         return if playback_change_message == :recommendation_queued
 
-        update_status(playback_change_message || (state.connected ? 'Playback state updated' : initial_status))
+        update_status(playback_change_message || (
+          if state.connected
+            "Playback state updated #{state.now_playing}"
+          else
+            initial_status
+          end
+        ))
       rescue Services::SpotifyClient::AuthenticationError
         sync_connection_state!
         update_status('Connect Spotify first')

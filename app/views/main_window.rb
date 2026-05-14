@@ -6,8 +6,8 @@ module YouFM
       WINDOW_W = 1260
       WINDOW_H = 840
       ACTIVE_PLAYBACK_REFRESH_MS = 20_000
-      IDLE_PLAYBACK_REFRESH_MS = 30_000
-      IDLE_POLLS_BEFORE_SUSPEND = 2
+      IDLE_PLAYBACK_REFRESH_MS = 60_000
+      IDLE_POLLS_BEFORE_SUSPEND = 30
       UI_REFRESH_MS = 100
       THEMES = %w[dark light].freeze
 
@@ -528,7 +528,7 @@ module YouFM
 
       def playback_inactive?
         state = view_model.state
-        !state.playing && state.now_playing == 'No active playback'
+        !state.playing && (state.now_playing == 'No active playback' || state.now_playing.start_with?('Paused:'))
       end
 
       def resume_playback_polling!
