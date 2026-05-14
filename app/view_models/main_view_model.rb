@@ -8,7 +8,8 @@ module YouFM
       RECOMMENDATION_STRATEGY_LABELS = {
         artist_similar_top_tracks: 'Similar artist top tracks',
         track_similar: 'Similar tracks',
-        recent_tracks: 'Random recent Last.fm track'
+        recent_tracks: 'Random recent Last.fm track',
+        loved_tracks: 'Random loved Last.fm track'
       }.freeze
       EXCLUDE_EXPLICIT_LABEL = 'Exclude explicit content'
 

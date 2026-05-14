@@ -7,8 +7,8 @@ module YouFM
         DEFAULT_SIMILAR_ARTIST_POOL_LIMIT
       DEFAULT_ENABLED_STRATEGIES = %i[artist_similar_top_tracks].freeze
       DEFAULT_EXCLUDE_EXPLICIT = true
-      STRATEGY_NAMES = %i[artist_similar_top_tracks track_similar recent_tracks].freeze
-      SEEDLESS_STRATEGY_NAMES = %i[recent_tracks].freeze
+      STRATEGY_NAMES = %i[artist_similar_top_tracks track_similar recent_tracks loved_tracks].freeze
+      SEEDLESS_STRATEGY_NAMES = %i[recent_tracks loved_tracks].freeze
       Recommendation = Struct.new(:track, :seed_track, :seed_label, keyword_init: true)
 
       def initialize(lastfm_client:, spotify_client:, similar_artist_pool_limit: DEFAULT_SIMILAR_ARTIST_POOL_LIMIT,
@@ -24,6 +24,11 @@ module YouFM
           ),
           track_similar: RecommendationStrategies::TrackSimilar.new(lastfm_client: lastfm_client, matcher: matcher),
           recent_tracks: RecommendationStrategies::RecentTracks.new(
+            lastfm_client: lastfm_client,
+            matcher: matcher,
+            random: random
+          ),
+          loved_tracks: RecommendationStrategies::LovedTracks.new(
             lastfm_client: lastfm_client,
             matcher: matcher,
             random: random

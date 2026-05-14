@@ -41,7 +41,8 @@ module YouFM
       TopTrack = Struct.new(:name, :playcount, :listeners)
       SimilarTrack = Struct.new(:name, :artist_name, :match)
       RecentTrack = Struct.new(:name, :artist_name, :album_name, :played_at)
-      RecentTracksPage = Struct.new(:tracks, :page, :total_pages)
+      LovedTrack = Struct.new(:name, :artist_name, :album_name, :loved_at)
+      UserTracksPage = Struct.new(:tracks, :page, :total_pages)
 
       def auth_get_token
         get({ method: 'auth.getToken' })
@@ -100,19 +101,26 @@ module YouFM
       end
 
       def get_recent_tracks(page: 1, limit: 10, user: nil)
-        username = user.to_s.strip
-        username = current_username if username.empty?
-        raise Error, 'Last.fm username is unavailable' if username.empty?
-
-        body = get(
-          { method: 'user.getRecentTracks', user: username, page: page, limit: limit },
-          signed: true
+        user_tracks_page(
+          method_name: 'user.getRecentTracks',
+          page: page,
+          limit: limit,
+          user: user,
+          payload_key: 'recenttracks',
+          tracks_key: 'track',
+          build_tracks: method(:build_recent_tracks)
         )
-        recent_tracks_payload = body.fetch('recenttracks', {})
-        RecentTracksPage.new(
-          tracks: build_recent_tracks(Array(recent_tracks_payload['track'])),
-          page: recent_tracks_payload.fetch('@attr', {}).fetch('page', page).to_i,
-          total_pages: recent_tracks_payload.fetch('@attr', {}).fetch('totalPages', 1).to_i
+      end
+
+      def get_loved_tracks(page: 1, limit: 10, user: nil)
+        user_tracks_page(
+          method_name: 'user.getLovedTracks',
+          page: page,
+          limit: limit,
+          user: user,
+          payload_key: 'lovedtracks',
+          tracks_key: 'track',
+          build_tracks: method(:build_loved_tracks)
         )
       end
 
@@ -169,6 +177,21 @@ module YouFM
         end
       end
 
+      def build_loved_tracks(tracks)
+        tracks.filter_map do |track_data|
+          artist_name = track_data.dig('artist', 'name').to_s
+          track_name = track_data['name'].to_s
+          next if artist_name.empty? || track_name.empty?
+
+          LovedTrack.new(
+            name: track_name,
+            artist_name: artist_name,
+            album_name: track_data['album'].to_s,
+            loved_at: track_data.dig('date', 'uts').to_s
+          )
+        end
+      end
+
       def get(params = {}, signed: false)
         params[:api_key] = api_key
         params[:format] = 'json'
@@ -179,6 +202,23 @@ module YouFM
         uri = build_uri(params)
         response = perform_api_request(uri)
         handle_response(response)
+      end
+
+      def user_tracks_page(method_name:, page:, limit:, user:, payload_key:, tracks_key:, build_tracks:)
+        username = user.to_s.strip
+        username = current_username if username.empty?
+        raise Error, 'Last.fm username is unavailable' if username.empty?
+
+        body = get(
+          { method: method_name, user: username, page: page, limit: limit },
+          signed: true
+        )
+        payload = body.fetch(payload_key, {})
+        UserTracksPage.new(
+          tracks: build_tracks.call(Array(payload[tracks_key])),
+          page: payload.fetch('@attr', {}).fetch('page', page).to_i,
+          total_pages: payload.fetch('@attr', {}).fetch('totalPages', 1).to_i
+        )
       end
 
       def perform_api_request(uri)

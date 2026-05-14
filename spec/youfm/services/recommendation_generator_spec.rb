@@ -216,9 +216,9 @@ RSpec.describe YouFM::Services::RecommendationGenerator do
 
   it 'can use a random recent Last.fm track as a recommendation strategy' do
     seed_track = build_track(id: 'seed', title: 'Seed Song', artist: 'Seed Artist', uri: 'spotify:track:seed')
-    first_page = YouFM::Services::LastfmClient::RecentTracksPage.new([], 1, 10)
+    first_page = YouFM::Services::LastfmClient::UserTracksPage.new([], 1, 10)
     recent_track = YouFM::Services::LastfmClient::RecentTrack.new('Recent Song', 'Recent Artist', 'Album', '1710000000')
-    selected_page = YouFM::Services::LastfmClient::RecentTracksPage.new([recent_track], 3, 10)
+    selected_page = YouFM::Services::LastfmClient::UserTracksPage.new([recent_track], 3, 10)
     recommended_track = build_track(id: 'recommended', title: 'Recent Song', artist: 'Recent Artist',
                                     uri: 'spotify:track:recommended')
 
@@ -241,7 +241,7 @@ RSpec.describe YouFM::Services::RecommendationGenerator do
 
   it 'can use a seedless recent-tracks strategy when no playlist tracks are loaded' do
     recent_track = YouFM::Services::LastfmClient::RecentTrack.new('Recent Song', 'Recent Artist', 'Album', '1710000000')
-    selected_page = YouFM::Services::LastfmClient::RecentTracksPage.new([recent_track], 1, 1)
+    selected_page = YouFM::Services::LastfmClient::UserTracksPage.new([recent_track], 1, 1)
     recommended_track = build_track(id: 'recommended', title: 'Recent Song', artist: 'Recent Artist',
                                     uri: 'spotify:track:recommended')
 
@@ -262,5 +262,31 @@ RSpec.describe YouFM::Services::RecommendationGenerator do
     expect(recommendation.track).to eq(recommended_track)
     expect(recommendation.seed_track).to be_nil
     expect(recommendation.seed_label).to include('Recent Song — Recent Artist')
+  end
+
+  it 'can use a seedless loved-tracks strategy when no playlist tracks are loaded' do
+    loved_track = YouFM::Services::LastfmClient::LovedTrack.new('Loved Song', 'Loved Artist', 'Album', '1711000000')
+    selected_page = YouFM::Services::LastfmClient::UserTracksPage.new([loved_track], 1, 1)
+    recommended_track = build_track(id: 'recommended', title: 'Loved Song', artist: 'Loved Artist',
+                                    uri: 'spotify:track:recommended')
+
+    allow(lastfm_client).to receive(:get_loved_tracks).with(page: 1, limit: 10).and_return(selected_page)
+    allow(spotify_client).to receive(:search_tracks).with('Loved Song artist:Loved Artist', limit: 10).and_return(
+      [recommended_track]
+    )
+
+    generator = described_class.new(
+      lastfm_client: lastfm_client,
+      spotify_client: spotify_client,
+      enabled_strategy_names: [:loved_tracks],
+      random: random
+    )
+
+    recommendation = generator.generate_with_seed([], playlist_name: 'Daily')
+
+    expect(recommendation.track).to eq(recommended_track)
+    expect(recommendation.seed_track).to be_nil
+    expect(recommendation.seed_label).to include('Loved Song — Loved Artist')
+    expect(recommendation.seed_label).to include('loved tracks')
   end
 end

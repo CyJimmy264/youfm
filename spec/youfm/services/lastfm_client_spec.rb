@@ -189,6 +189,45 @@ RSpec.describe YouFM::Services::LastfmClient do
     end
   end
 
+  describe '#get_loved_tracks' do
+    it 'fetches loved tracks for the current authenticated user' do
+      response = http_response(
+        code: '200',
+        body: JSON.dump(
+          'lovedtracks' => {
+            'track' => [
+              {
+                'name' => 'Loved Song',
+                'artist' => { 'name' => 'Loved Artist' },
+                'album' => 'Loved Album',
+                'date' => { 'uts' => '1711000000' }
+              }
+            ],
+            '@attr' => { 'page' => '4', 'totalPages' => '512' }
+          }
+        )
+      )
+      http_client = http_client_with(response)
+      client = described_class.new(
+        api_key: 'key',
+        secret: 'secret',
+        session_key_provider: -> { 'session-key' },
+        username_provider: -> { 'RJ' },
+        api_http_client: http_client
+      )
+
+      page = client.get_loved_tracks(page: 4, limit: 10)
+
+      expect(page.page).to eq(4)
+      expect(page.total_pages).to eq(512)
+      expect(page.tracks.map(&:name)).to eq(['Loved Song'])
+      expect(page.tracks.map(&:artist_name)).to eq(['Loved Artist'])
+      expect(http_client).to have_received(:request).with(
+        have_attributes(uri: have_attributes(query: include('method=user.getLovedTracks', 'user=RJ', 'page=4')))
+      )
+    end
+  end
+
   describe 'session key resolution' do
     it 'uses the current session key from the provider for signed requests' do
       response = http_response(code: '200', body: JSON.dump('similarartists' => { 'artist' => [] }))

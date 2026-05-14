@@ -3,19 +3,19 @@
 module YouFM
   module Services
     module RecommendationStrategies
-      class RecentTracks < UserLibraryTracksBase
+      class LovedTracks < UserLibraryTracksBase
         private
 
         def fetch_page(page:)
-          lastfm_client.get_recent_tracks(page: page, limit: TRACKS_PAGE_SIZE)
+          lastfm_client.get_loved_tracks(page: page, limit: TRACKS_PAGE_SIZE)
         end
 
         def source_name
-          'recent tracks'
+          'loved tracks'
         end
 
         def listened_at(library_track)
-          library_track.played_at
+          library_track.loved_at
         end
       end
     end
