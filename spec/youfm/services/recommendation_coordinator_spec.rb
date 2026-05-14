@@ -10,6 +10,7 @@ RSpec.describe YouFM::Services::RecommendationCoordinator do
   before do
     allow(YouFM::Services::Logger).to receive(:info)
     allow(YouFM::Services::Logger).to receive(:warn)
+    allow(generator).to receive(:supports_seedless_generation?).and_return(false)
   end
 
   def build_track(id, title = "Track #{id}")
@@ -64,6 +65,26 @@ RSpec.describe YouFM::Services::RecommendationCoordinator do
     )
     expect(context[:appended]).to eq([[recommended_track, 'Track seed — Artist (Взят из плейлиста: Daily)']])
     expect(context[:updates]).to eq(['Added recommendation to Spotify queue: Recommended - Artist'])
+  end
+
+  it 'allows seedless strategies to run without loaded tracks' do
+    recommended_track = build_track('recommended', 'Recommended')
+    seed_label_suffix = 'Взят из библиотеки Last.fm recent tracks; слушалось: 2024-03-09 16:00:00 UTC'
+    seed_label = "Recent Song — Recent Artist (#{seed_label_suffix})"
+    recommendation = YouFM::Services::RecommendationGenerator::Recommendation.new(
+      track: recommended_track,
+      seed_track: nil,
+      seed_label: seed_label
+    )
+    allow(generator).to receive_messages(supports_seedless_generation?: true, generate_with_seed: recommendation)
+    allow(source).to receive(:add_to_queue).with(recommended_track)
+
+    coordinator = build_coordinator
+    context = enqueue_context(seed_tracks: [])
+    result = coordinator.enqueue(**context.except(:updates, :appended))
+
+    expect(result).to eq('Added recommendation to Spotify queue: Recommended - Artist')
+    expect(context[:appended]).to eq([[recommended_track, seed_label]])
   end
 
   it 'can replay the seed before the recommendation at the configured interval' do

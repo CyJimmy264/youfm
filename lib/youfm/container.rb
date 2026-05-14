@@ -77,6 +77,7 @@ module YouFM
           api_key: config.lastfm_api_key,
           secret: config.lastfm_secret,
           session_key_provider: -> { token_store.load['key'] },
+          username_provider: -> { token_store.load['name'] },
           similar_artists_cache: fetch(:lastfm_similar_artists_cache),
           top_tracks_cache: fetch(:lastfm_top_tracks_cache)
         )

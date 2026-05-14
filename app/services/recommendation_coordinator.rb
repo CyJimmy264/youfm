@@ -217,7 +217,9 @@ module YouFM
       end
 
       def build_outcome(seed_tracks:, excluded_track_ids:, playlist_name:, trigger:)
-        return Outcome.not_added(trigger: trigger, reason: :missing_seed_tracks) if seed_tracks.empty?
+        if seed_tracks.empty? && !recommendation_generator.supports_seedless_generation?
+          return Outcome.not_added(trigger: trigger, reason: :missing_seed_tracks)
+        end
 
         blocked_track_ids = resolved_track_ids(excluded_track_ids)
         recommendation = recommendation_generator.generate_with_seed(
@@ -228,11 +230,11 @@ module YouFM
         recommended_track = recommendation&.track
         return Outcome.not_added(trigger: trigger, reason: :not_found) unless recommended_track
 
-        seed_label = seed_label_for(recommendation.seed_track, playlist_name)
         if blocked_track_ids.include?(recommended_track.id)
           return Outcome.not_added(trigger: trigger, reason: :duplicate)
         end
 
+        seed_label = recommendation.seed_label || seed_label_for(recommendation.seed_track, playlist_name)
         Outcome.success(track: recommended_track, seed_track: recommendation.seed_track, seed_label: seed_label)
       end
 

@@ -7,7 +7,8 @@ module YouFM
       DEFAULT_SEED_REPLAY_INTERVAL = Services::RecommendationCoordinator::DEFAULT_SEED_REPLAY_INTERVAL
       RECOMMENDATION_STRATEGY_LABELS = {
         artist_similar_top_tracks: 'Similar artist top tracks',
-        track_similar: 'Similar tracks'
+        track_similar: 'Similar tracks',
+        recent_tracks: 'Random recent Last.fm track'
       }.freeze
       EXCLUDE_EXPLICIT_LABEL = 'Exclude explicit content'
 

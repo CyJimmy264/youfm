@@ -150,6 +150,45 @@ RSpec.describe YouFM::Services::LastfmClient do
     end
   end
 
+  describe '#get_recent_tracks' do
+    it 'fetches recent tracks for the current authenticated user' do
+      response = http_response(
+        code: '200',
+        body: JSON.dump(
+          'recenttracks' => {
+            'track' => [
+              {
+                'name' => 'Recent Song',
+                'artist' => { '#text' => 'Recent Artist' },
+                'album' => { '#text' => 'Recent Album' },
+                'date' => { 'uts' => '1710000000' }
+              }
+            ],
+            '@attr' => { 'page' => '2', 'totalPages' => '3019' }
+          }
+        )
+      )
+      http_client = http_client_with(response)
+      client = described_class.new(
+        api_key: 'key',
+        secret: 'secret',
+        session_key_provider: -> { 'session-key' },
+        username_provider: -> { 'RJ' },
+        api_http_client: http_client
+      )
+
+      page = client.get_recent_tracks(page: 2, limit: 10)
+
+      expect(page.page).to eq(2)
+      expect(page.total_pages).to eq(3019)
+      expect(page.tracks.map(&:name)).to eq(['Recent Song'])
+      expect(page.tracks.map(&:artist_name)).to eq(['Recent Artist'])
+      expect(http_client).to have_received(:request).with(
+        have_attributes(uri: have_attributes(query: include('method=user.getRecentTracks', 'user=RJ', 'page=2')))
+      )
+    end
+  end
+
   describe 'session key resolution' do
     it 'uses the current session key from the provider for signed requests' do
       response = http_response(code: '200', body: JSON.dump('similarartists' => { 'artist' => [] }))

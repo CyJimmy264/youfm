@@ -213,4 +213,54 @@ RSpec.describe YouFM::Services::RecommendationGenerator do
 
     expect(generator.generate_from_playlist([seed_track], playlist_name: 'Daily')).to be_nil
   end
+
+  it 'can use a random recent Last.fm track as a recommendation strategy' do
+    seed_track = build_track(id: 'seed', title: 'Seed Song', artist: 'Seed Artist', uri: 'spotify:track:seed')
+    first_page = YouFM::Services::LastfmClient::RecentTracksPage.new([], 1, 10)
+    recent_track = YouFM::Services::LastfmClient::RecentTrack.new('Recent Song', 'Recent Artist', 'Album', '1710000000')
+    selected_page = YouFM::Services::LastfmClient::RecentTracksPage.new([recent_track], 3, 10)
+    recommended_track = build_track(id: 'recommended', title: 'Recent Song', artist: 'Recent Artist',
+                                    uri: 'spotify:track:recommended')
+
+    allow(lastfm_client).to receive(:get_recent_tracks).with(page: 1, limit: 10).and_return(first_page)
+    allow(lastfm_client).to receive(:get_recent_tracks).with(page: 3, limit: 10).and_return(selected_page)
+    allow(random).to receive(:rand).with(10).and_return(2)
+    allow(spotify_client).to receive(:search_tracks).with('Recent Song artist:Recent Artist', limit: 10).and_return(
+      [recommended_track]
+    )
+
+    generator = described_class.new(
+      lastfm_client: lastfm_client,
+      spotify_client: spotify_client,
+      enabled_strategy_names: [:recent_tracks],
+      random: random
+    )
+
+    expect(generator.generate_from_playlist([seed_track], playlist_name: 'Daily')).to eq(recommended_track)
+  end
+
+  it 'can use a seedless recent-tracks strategy when no playlist tracks are loaded' do
+    recent_track = YouFM::Services::LastfmClient::RecentTrack.new('Recent Song', 'Recent Artist', 'Album', '1710000000')
+    selected_page = YouFM::Services::LastfmClient::RecentTracksPage.new([recent_track], 1, 1)
+    recommended_track = build_track(id: 'recommended', title: 'Recent Song', artist: 'Recent Artist',
+                                    uri: 'spotify:track:recommended')
+
+    allow(lastfm_client).to receive(:get_recent_tracks).with(page: 1, limit: 10).and_return(selected_page)
+    allow(spotify_client).to receive(:search_tracks).with('Recent Song artist:Recent Artist', limit: 10).and_return(
+      [recommended_track]
+    )
+
+    generator = described_class.new(
+      lastfm_client: lastfm_client,
+      spotify_client: spotify_client,
+      enabled_strategy_names: [:recent_tracks],
+      random: random
+    )
+
+    recommendation = generator.generate_with_seed([], playlist_name: 'Daily')
+
+    expect(recommendation.track).to eq(recommended_track)
+    expect(recommendation.seed_track).to be_nil
+    expect(recommendation.seed_label).to include('Recent Song — Recent Artist')
+  end
 end

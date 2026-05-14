@@ -20,13 +20,14 @@ module YouFM
       WEB_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 ' \
                        '(KHTML, like Gecko) Chrome/123.0 Safari/537.36'
 
-      def initialize(api_key:, secret:, session_key: nil, session_key_provider: nil,
+      def initialize(api_key:, secret:, session_key: nil, session_key_provider: nil, username_provider: nil,
                      base_url: 'http://ws.audioscrobbler.com/2.0/', similar_artists_cache: nil,
                      top_tracks_cache: nil, api_http_client: nil, web_http_client: nil)
         @api_key = api_key
         @secret = secret
         @session_key = session_key
         @session_key_provider = session_key_provider
+        @username_provider = username_provider
         @base_url = base_url
         @similar_artists_cache = similar_artists_cache
         @top_tracks_cache = top_tracks_cache
@@ -39,6 +40,8 @@ module YouFM
       SimilarArtist = Struct.new(:name, :match)
       TopTrack = Struct.new(:name, :playcount, :listeners)
       SimilarTrack = Struct.new(:name, :artist_name, :match)
+      RecentTrack = Struct.new(:name, :artist_name, :album_name, :played_at)
+      RecentTracksPage = Struct.new(:tracks, :page, :total_pages)
 
       def auth_get_token
         get({ method: 'auth.getToken' })
@@ -96,6 +99,23 @@ module YouFM
         build_similar_tracks(Array(body.dig('similartracks', 'track')))
       end
 
+      def get_recent_tracks(page: 1, limit: 10, user: nil)
+        username = user.to_s.strip
+        username = current_username if username.empty?
+        raise Error, 'Last.fm username is unavailable' if username.empty?
+
+        body = get(
+          { method: 'user.getRecentTracks', user: username, page: page, limit: limit },
+          signed: true
+        )
+        recent_tracks_payload = body.fetch('recenttracks', {})
+        RecentTracksPage.new(
+          tracks: build_recent_tracks(Array(recent_tracks_payload['track'])),
+          page: recent_tracks_payload.fetch('@attr', {}).fetch('page', page).to_i,
+          total_pages: recent_tracks_payload.fetch('@attr', {}).fetch('totalPages', 1).to_i
+        )
+      end
+
       private
 
       attr_reader :api_key, :secret, :base_url, :similar_artists_cache, :top_tracks_cache
@@ -130,6 +150,21 @@ module YouFM
             name: track_data['name'],
             artist_name: track_data.dig('artist', 'name').to_s,
             match: track_data['match'].to_f
+          )
+        end
+      end
+
+      def build_recent_tracks(tracks)
+        tracks.filter_map do |track_data|
+          artist_name = track_data.dig('artist', '#text').to_s
+          track_name = track_data['name'].to_s
+          next if artist_name.empty? || track_name.empty?
+
+          RecentTrack.new(
+            name: track_name,
+            artist_name: artist_name,
+            album_name: track_data.dig('album', '#text').to_s,
+            played_at: track_data.dig('date', 'uts').to_s
           )
         end
       end
@@ -326,6 +361,10 @@ module YouFM
         return provided_session_key unless provided_session_key.empty?
 
         @session_key.to_s.strip
+      end
+
+      def current_username
+        @username_provider&.call.to_s.strip
       end
     end
   end
