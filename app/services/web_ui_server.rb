@@ -272,11 +272,20 @@ module YouFM
           maximum_queue_size: log_render_step('maximum_recommended_queue_size') do
             view_model.maximum_recommended_queue_size
           end,
-          strategy_labels: log_render_step('recommendation_strategy_labels') do
-            view_model.recommendation_strategy_labels
+          seed_source_labels: log_render_step('recommendation_seed_source_labels') do
+            view_model.recommendation_seed_source_labels
           end,
-          enabled_strategies: log_render_step('enabled_recommendation_strategy_names') do
-            view_model.enabled_recommendation_strategy_names
+          enabled_seed_sources: log_render_step('enabled_recommendation_seed_source_names') do
+            view_model.enabled_recommendation_seed_source_names
+          end,
+          generator_labels: log_render_step('recommendation_generator_labels') do
+            view_model.recommendation_generator_labels
+          end,
+          enabled_generators: log_render_step('enabled_recommendation_generator_names') do
+            view_model.enabled_recommendation_generator_names
+          end,
+          generator_weights: log_render_step('recommendation_generator_weights') do
+            view_model.recommendation_generator_weights
           end,
           exclude_explicit: log_render_step('exclude_explicit_recommendations') do
             view_model.filter_explicit_content?
@@ -414,8 +423,14 @@ module YouFM
       end
 
       def apply_recommendation_strategies_action(params)
-        enabled_strategies = view_model.update_enabled_recommendation_strategy_names(params.fetch('strategy_names', []))
-        settings_store.write_enabled_recommendation_strategy_names(enabled_strategies)
+        applied_settings = view_model.update_recommendation_pipeline_settings(
+          seed_sources: params.fetch('seed_source_names', []),
+          generators: params.fetch('generator_names', []),
+          generator_weights: params.fetch('generator_weights', {})
+        )
+        settings_store.write_enabled_seed_source_names(applied_settings.fetch(:seed_sources))
+        settings_store.write_enabled_generator_names(applied_settings.fetch(:generators))
+        settings_store.write_generator_weights(applied_settings.fetch(:generator_weights))
         exclude_explicit = view_model.filter_explicit_content = (params['exclude_explicit'] == '1')
         settings_store.write_exclude_explicit_recommendations(exclude_explicit)
         replay_settings = view_model.update_seed_replay_settings(

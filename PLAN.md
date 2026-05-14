@@ -1,5 +1,10 @@
 # Планируемые фичи
 
+- Фикс поиска в Spotify
+  - Нашёл "Dreamcraft - Original Deep Mix — Following Light"
+  - Вместо "Dreamcraft - Original Deep Mix — Following Light, MDeco"
+  - Видимо потому что ищёт первый подходящий мэтч. Надо видимо ранжировать все мэтчащиеся треки процентно по одинаковости. И в итоге выбирать наиболее подходящий.
+
 - [x] Баг: Список Queue после перезапуска приложения (точнее после краша), стал пустым, хотя в Spotify в очереди остались треки, добавленные генератором.
   - [x] Найти и исправить баг, если он есть
   - [x] Можно сделать fallback на пересечении очереди из Spotify и recommendation_seeds.yml
@@ -7,30 +12,32 @@
 - [x] Добавить propagation состояния приложения по настройкам через разные UI: Qt - WebUI - потенциально какой-нибудь ещё.
   - Сейчас при включении чекбокса Replay seeds before recs в WebUI, в Qt интерфейсе не видно изменений.
 
-- Перестроить систему генерации в два отдельных блока: `Seed sources` и `Generators`
+- Перестроить систему генерации в три отдельных блока: `Seed sources`, `Generators` и `Queue modifiers`
   - Seed sources
-    - [ ] Отдельный блок UI `Seed sources:`
-    - [ ] Current playlist / tracks list
+    - [x] Отдельный блок UI `Seed sources:`
+    - [x] Current playlist / tracks list
     - [x] Random recent Last.fm track
     - [x] Random loved Last.fm track
-    - [ ] Random recent Last.fm track as seed
-    - [ ] Random loved Last.fm track as seed
-    - [ ] Если выбрано несколько source'ов, выбирать один равновероятно
+    - [x] Random recent Last.fm track as seed
+    - [x] Random loved Last.fm track as seed
+    - [x] Если выбрано несколько source'ов, выбирать один равновероятно
     - [ ] Позже добавить веса и для source'ов
   - Generators
-    - [ ] Отдельный блок UI `Generators:`
-    - [ ] Raw seed
+    - [x] Отдельный блок UI `Generators:`
+    - [x] Raw seed
     - [x] Similar artist top tracks
     - [x] Similar tracks
     - [ ] Same artist
-    - [ ] У каждого generator'а отдельный weight рядом с чекбоксом
-    - [ ] Если выбрано несколько generator'ов, выбирать один по весам
+    - [x] У каждого generator'а отдельный weight рядом с чекбоксом
+    - [x] Если выбрано несколько generator'ов, выбирать один по весам
+  - Queue modifiers
+    - [x] Отдельный блок UI `Queue modifiers:`
+    - [x] `Replay seed every N generated tracks`
+    - [x] Никогда не применять replay к `Raw seed`
+    - [ ] Убрать старый параметр replay interval в его текущем виде
   - Cross-cutting settings / rules
     - [x] Фильтр на explicit content, в last.fm вроде нет такого, тогда надо смотреть при поиске треков в Spotify
     - [x] Добавить persistent history для already queued/generated треков и подмешивать её в `excluded_track_ids`, чтобы генератор не выдавал повторы
-    - [ ] `Prepend seed before recommendation` должен стать generator'ом или частью generator pipeline, а не отдельным старым флагом
-      - [ ] Убрать старый параметр replay interval в его текущем виде
-      - [ ] Перенести его в новую модель generator settings / weights
     - [ ] Генерировать трек того же артиста по сиду
       - [ ] Добавить числовой параметр: раз на сколько сидов осуществлять такое добавление
       - [ ] Учитывать этот параметр для стратегии `track.getSimilar`, который может предложить того же артиста

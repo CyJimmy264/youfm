@@ -13,6 +13,12 @@ module YouFM
       def write_maximum_recommended_queue_size(_size) = nil
       def read_enabled_recommendation_strategy_names = nil
       def write_enabled_recommendation_strategy_names(_names) = nil
+      def read_enabled_seed_source_names = nil
+      def write_enabled_seed_source_names(_names) = nil
+      def read_enabled_generator_names = nil
+      def write_enabled_generator_names(_names) = nil
+      def read_generator_weights = nil
+      def write_generator_weights(_weights) = nil
       def read_exclude_explicit_recommendations = nil
       def write_exclude_explicit_recommendations(_value) = nil
       def read_replay_seed_before_recommendation = nil

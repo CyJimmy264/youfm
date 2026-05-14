@@ -176,7 +176,7 @@ RSpec.describe YouFM::Services::RecommendationGenerator do
     expect(result).to eq(recommended_track)
   end
 
-  it 'tries enabled recommendation strategies in shuffled order' do
+  it 'uses the selected generator for the chosen seed source' do
     seed_track = build_track(id: 'seed', title: 'Seed Song', artist: 'Seed Artist', uri: 'spotify:track:seed')
     similar_track = YouFM::Services::LastfmClient::SimilarTrack.new('Similar Song', 'Similar Artist', 0.7)
     recommended_track = build_track(id: 'recommended', title: 'Similar Song', artist: 'Similar Artist',
@@ -184,17 +184,18 @@ RSpec.describe YouFM::Services::RecommendationGenerator do
     generator = described_class.new(
       lastfm_client: lastfm_client,
       spotify_client: spotify_client,
-      enabled_strategy_names: %i[artist_similar_top_tracks track_similar]
+      enabled_seed_source_names: [:current_playlist],
+      enabled_generator_names: %i[artist_similar_top_tracks track_similar],
+      generator_weights: { artist_similar_top_tracks: 1, track_similar: 1 },
+      random: random
     )
 
-    allow(generator.enabled_strategy_names)
-      .to receive(:shuffle)
-      .and_return(%i[track_similar artist_similar_top_tracks])
+    allow(random).to receive(:rand).with(2).and_return(1)
     allow(lastfm_client)
       .to receive(:get_similar_tracks)
       .with('Seed Artist', 'Seed Song', limit: 20)
       .and_return([similar_track])
-    allow(lastfm_client).to receive(:get_similar_artists)
+    allow(lastfm_client).to receive(:get_similar_artists).and_return([])
     allow(spotify_client)
       .to receive(:search_tracks)
       .with('Similar Song artist:Similar Artist', limit: 10)

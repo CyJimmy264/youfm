@@ -55,11 +55,18 @@ RSpec.describe YouFM::Services::WebUiServer do
       similar_artist_pool_limit: 200,
       minimum_recommended_queue_size: 1,
       maximum_recommended_queue_size: 25,
-      recommendation_strategy_labels: {
+      recommendation_seed_source_labels: {
+        current_playlist: 'Current playlist / tracks list',
+        recent_tracks: 'Random recent Last.fm track'
+      },
+      recommendation_generator_labels: {
+        raw_seed: 'Raw seed',
         artist_similar_top_tracks: 'Similar artist top tracks',
         track_similar: 'Similar tracks'
       },
-      enabled_recommendation_strategy_names: [:artist_similar_top_tracks],
+      enabled_recommendation_seed_source_names: [:current_playlist],
+      enabled_recommendation_generator_names: [:artist_similar_top_tracks],
+      recommendation_generator_weights: { raw_seed: 1, artist_similar_top_tracks: 4, track_similar: 2 },
       filter_explicit_content?: true,
       replay_seed_before_recommendation?: true,
       seed_replay_interval: 4,
@@ -70,7 +77,11 @@ RSpec.describe YouFM::Services::WebUiServer do
       update_similar_artist_pool_limit: 300,
       update_minimum_recommended_queue_size: 2,
       update_maximum_recommended_queue_size: 8,
-      update_enabled_recommendation_strategy_names: %i[artist_similar_top_tracks track_similar],
+      update_recommendation_pipeline_settings: {
+        seed_sources: %i[current_playlist recent_tracks],
+        generators: %i[raw_seed track_similar],
+        generator_weights: { raw_seed: 2, track_similar: 5 }
+      },
       update_seed_replay_settings: { enabled: true, interval: 4 },
       'filter_explicit_content=': true,
       select_device_index: nil,
@@ -89,7 +100,9 @@ RSpec.describe YouFM::Services::WebUiServer do
       write_similar_artist_pool_limit: nil,
       write_minimum_recommended_queue_size: nil,
       write_maximum_recommended_queue_size: nil,
-      write_enabled_recommendation_strategy_names: nil,
+      write_enabled_seed_source_names: nil,
+      write_enabled_generator_names: nil,
+      write_generator_weights: nil,
       write_exclude_explicit_recommendations: nil,
       write_replay_seed_before_recommendation: nil,
       write_seed_replay_interval: nil
@@ -125,15 +138,23 @@ RSpec.describe YouFM::Services::WebUiServer do
     expect(html).to include('maximum_queue_size')
   end
 
-  it 'renders recommendation strategy controls' do
+  it 'renders recommendation strategy controls', :aggregate_failures do
     html = build_server.send(:render_page)
 
-    expect(html).to include('Recommendation Strategies')
+    expect(html).to include('Seed Sources')
+    expect(html).to include('Generators')
+    expect(html).to include('Current playlist / tracks list')
+    expect(html).to include('Random recent Last.fm track')
+    expect(html).to include('Raw seed')
     expect(html).to include('Similar artist top tracks')
     expect(html).to include('Similar tracks')
     expect(html).to include('Exclude explicit content')
-    expect(html).to include('Replay seed before recommendation')
-    expect(html).to include('strategy_names[]')
+    expect(html).to include('Queue Modifiers')
+    expect(html).to include('Replay seed every N generated tracks')
+    expect(html).to include('Ignored for Raw seed')
+    expect(html).to include('seed_source_names[]')
+    expect(html).to include('generator_names[]')
+    expect(html).to include('generator_weights[raw_seed]')
   end
 
   it 'renders device picker controls' do
@@ -254,7 +275,7 @@ RSpec.describe YouFM::Services::WebUiServer do
     expect(settings_store).to have_received(:write_maximum_recommended_queue_size).with(8)
   end
 
-  it 'applies and persists recommendation strategies' do
+  it 'applies and persists recommendation strategies', :aggregate_failures do
     server = build_server
     allow(view_model).to receive(:filter_explicit_content=).with(false).and_return(false)
     allow(view_model).to receive(:update_seed_replay_settings).with(enabled: false, interval: '').and_return(
@@ -265,15 +286,21 @@ RSpec.describe YouFM::Services::WebUiServer do
     server.send(
       :run_action,
       :apply_recommendation_strategies,
-      { 'strategy_names' => %w[artist_similar_top_tracks track_similar] }
+      {
+        'seed_source_names' => %w[current_playlist recent_tracks],
+        'generator_names' => %w[raw_seed track_similar],
+        'generator_weights' => { 'raw_seed' => '2', 'track_similar' => '5' }
+      }
     )
 
-    expect(view_model).to have_received(:update_enabled_recommendation_strategy_names).with(
-      %w[artist_similar_top_tracks track_similar]
+    expect(view_model).to have_received(:update_recommendation_pipeline_settings).with(
+      seed_sources: %w[current_playlist recent_tracks],
+      generators: %w[raw_seed track_similar],
+      generator_weights: { 'raw_seed' => '2', 'track_similar' => '5' }
     )
-    expect(settings_store).to have_received(:write_enabled_recommendation_strategy_names).with(
-      %i[artist_similar_top_tracks track_similar]
-    )
+    expect(settings_store).to have_received(:write_enabled_seed_source_names).with(%i[current_playlist recent_tracks])
+    expect(settings_store).to have_received(:write_enabled_generator_names).with(%i[raw_seed track_similar])
+    expect(settings_store).to have_received(:write_generator_weights).with(raw_seed: 2, track_similar: 5)
     expect(view_model).to have_received(:filter_explicit_content=).with(false)
     expect(settings_store).to have_received(:write_exclude_explicit_recommendations).with(false)
     expect(settings_store).to have_received(:write_replay_seed_before_recommendation).with(false)
@@ -309,7 +336,13 @@ RSpec.describe YouFM::Services::WebUiServer do
     server.send(
       :run_action,
       :apply_recommendation_strategies,
-      { 'replay_seed_before_recommendation' => '1', 'seed_replay_interval' => '5' }
+      {
+        'seed_source_names' => ['current_playlist'],
+        'generator_names' => ['artist_similar_top_tracks'],
+        'generator_weights' => { 'artist_similar_top_tracks' => '4' },
+        'replay_seed_before_recommendation' => '1',
+        'seed_replay_interval' => '5'
+      }
     )
 
     expect(view_model).to have_received(:update_seed_replay_settings).with(enabled: true, interval: '5')
@@ -371,13 +404,18 @@ RSpec.describe YouFM::Services::WebUiServer do
         @similar_artist_pool_limit = 200
         @minimum_recommended_queue_size = 1
         @maximum_recommended_queue_size = 25
-        @recommendation_strategy_labels = {}
-        @enabled_recommendation_strategy_names = []
+        @recommendation_seed_source_labels = {}
+        @recommendation_generator_labels = {}
+        @enabled_recommendation_seed_source_names = []
+        @enabled_recommendation_generator_names = []
+        @recommendation_generator_weights = {}
         @refreshed = Queue.new
         @statuses = Queue.new
       end
 
-      attr_reader :recommendation_strategy_labels, :enabled_recommendation_strategy_names
+      attr_reader :recommendation_seed_source_labels, :recommendation_generator_labels,
+                  :enabled_recommendation_seed_source_names, :enabled_recommendation_generator_names,
+                  :recommendation_generator_weights
 
       def status=(message)
         statuses << message

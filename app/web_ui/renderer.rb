@@ -8,15 +8,19 @@ module YouFM
     class Renderer
       TEMPLATE_DIR = File.expand_path('templates', __dir__)
 
-      def render(state:, pool_limit:, minimum_queue_size:, maximum_queue_size:, strategy_labels:, enabled_strategies:,
+      def render(state:, pool_limit:, minimum_queue_size:, maximum_queue_size:, seed_source_labels:,
+                 enabled_seed_sources:, generator_labels:, enabled_generators:, generator_weights:,
                  exclude_explicit:, replay_seed_before_recommendation:, seed_replay_interval:)
         TemplateContext.new(
           state: state,
           pool_limit: pool_limit,
           minimum_queue_size: minimum_queue_size,
           maximum_queue_size: maximum_queue_size,
-          strategy_labels: strategy_labels,
-          enabled_strategies: enabled_strategies,
+          seed_source_labels: seed_source_labels,
+          enabled_seed_sources: enabled_seed_sources,
+          generator_labels: generator_labels,
+          enabled_generators: enabled_generators,
+          generator_weights: generator_weights,
           exclude_explicit: exclude_explicit,
           replay_seed_before_recommendation: replay_seed_before_recommendation,
           seed_replay_interval: seed_replay_interval,
@@ -40,15 +44,19 @@ module YouFM
       end
 
       class TemplateContext
-        def initialize(state:, pool_limit:, minimum_queue_size:, strategy_labels:, enabled_strategies:,
-                       maximum_queue_size:, exclude_explicit:, replay_seed_before_recommendation:,
+        def initialize(state:, pool_limit:, minimum_queue_size:, seed_source_labels:, enabled_seed_sources:,
+                       generator_labels:, enabled_generators:, generator_weights:, maximum_queue_size:,
+                       exclude_explicit:, replay_seed_before_recommendation:,
                        seed_replay_interval:, stylesheet:, javascript:)
           @state = state
           @pool_limit = pool_limit
           @minimum_queue_size = minimum_queue_size
           @maximum_queue_size = maximum_queue_size
-          @strategy_labels = strategy_labels
-          @enabled_strategies = enabled_strategies
+          @seed_source_labels = seed_source_labels
+          @enabled_seed_sources = enabled_seed_sources
+          @generator_labels = generator_labels
+          @enabled_generators = enabled_generators
+          @generator_weights = generator_weights
           @exclude_explicit = exclude_explicit
           @replay_seed_before_recommendation = replay_seed_before_recommendation
           @seed_replay_interval = seed_replay_interval
@@ -57,7 +65,8 @@ module YouFM
         end
 
         attr_reader(
-          :state, :pool_limit, :minimum_queue_size, :maximum_queue_size, :strategy_labels, :enabled_strategies,
+          :state, :pool_limit, :minimum_queue_size, :maximum_queue_size, :seed_source_labels, :enabled_seed_sources,
+          :generator_labels, :enabled_generators, :generator_weights,
           :exclude_explicit, :replay_seed_before_recommendation, :seed_replay_interval, :stylesheet, :javascript
         )
 
@@ -130,12 +139,23 @@ module YouFM
         end
 
         def recommendation_strategies_form
-          checkboxes = strategy_labels.map do |name, label|
-            checked = enabled_strategies.include?(name) ? ' checked' : ''
+          seed_source_checkboxes = seed_source_labels.map do |name, label|
+            checked = enabled_seed_sources.include?(name) ? ' checked' : ''
             <<~HTML
               <label class="checkbox-label">
-                <input type="checkbox" name="strategy_names[]" value="#{escape(name)}"#{checked}>
+                <input type="checkbox" name="seed_source_names[]" value="#{escape(name)}"#{checked}>
                 <span>#{escape(label)}</span>
+              </label>
+            HTML
+          end.join
+          generator_rows = generator_labels.map do |name, label|
+            checked = enabled_generators.include?(name) ? ' checked' : ''
+            weight = generator_weights.fetch(name, generator_weights.fetch(name.to_s, 1))
+            <<~HTML
+              <label class="checkbox-label checkbox-inline-setting">
+                <input type="checkbox" name="generator_names[]" value="#{escape(name)}"#{checked}>
+                <span>#{escape(label)}</span>
+                <input name="generator_weights[#{escape(name)}]" value="#{escape(weight)}" class="inline-number">
               </label>
             HTML
           end.join
@@ -145,18 +165,26 @@ module YouFM
           <<~HTML
             <form class="strategies-form" method="post" action="/action">
               <input type="hidden" name="name" value="apply_recommendation_strategies">
-              <div class="strategies-heading">Recommendation Strategies</div>
+              <div class="strategies-heading">Seed Sources</div>
               <div class="strategy-options">
-                #{checkboxes}
+                #{seed_source_checkboxes}
+              </div>
+              <div class="strategies-heading">Generators</div>
+              <div class="strategy-options">
+                #{generator_rows}
                 <label class="checkbox-label">
                   <input type="checkbox" name="exclude_explicit" value="1"#{explicit_checked}>
                   <span>Exclude explicit content</span>
                 </label>
+              </div>
+              <div class="strategies-heading">Queue Modifiers</div>
+              <div class="strategy-options">
                 <label class="checkbox-label checkbox-inline-setting">
                   <input type="checkbox" name="replay_seed_before_recommendation" value="1"#{replay_seed_checked}>
-                  <span>Replay seed before recommendation</span>
+                  <span>Replay seed every N generated tracks</span>
                   <input name="seed_replay_interval" value="#{escape(seed_replay_interval)}" class="inline-number">
                 </label>
+                <div class="form-summary">Ignored for Raw seed</div>
               </div>
               <button type="submit">Apply</button>
             </form>

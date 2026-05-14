@@ -10,7 +10,9 @@ RSpec.describe YouFM::Views::MainWindow do
         YouFM::ViewModels::MainViewModel,
         revision: 2,
         state: state,
-        enabled_recommendation_strategy_names: [:track_similar],
+        enabled_recommendation_seed_source_names: %i[current_playlist recent_tracks],
+        enabled_recommendation_generator_names: %i[raw_seed track_similar],
+        recommendation_generator_weights: { raw_seed: 2, track_similar: 3 },
         filter_explicit_content?: false,
         replay_seed_before_recommendation?: true,
         seed_replay_interval: 5
@@ -31,7 +33,9 @@ RSpec.describe YouFM::Views::MainWindow do
 
       expect(numeric_settings_panel).to have_received(:apply_current_values)
       expect(strategy_selector).to have_received(:apply_state).with(
-        enabled_names: [:track_similar],
+        enabled_seed_source_names: %i[current_playlist recent_tracks],
+        enabled_generator_names: %i[raw_seed track_similar],
+        generator_weights: { raw_seed: 2, track_similar: 3 },
         exclude_explicit: false,
         replay_seed_before_recommendation: true,
         seed_replay_interval: 5

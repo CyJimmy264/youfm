@@ -177,15 +177,16 @@ module YouFM
       def add_recommendation_strategy_controls(layout)
         @recommendation_strategy_selector = RecommendationStrategySelector.new(
           parent: window,
-          strategy_labels: view_model.recommendation_strategy_labels,
-          enabled_names: view_model.enabled_recommendation_strategy_names,
+          seed_source_labels: view_model.recommendation_seed_source_labels,
+          enabled_seed_source_names: view_model.enabled_recommendation_seed_source_names,
+          generator_labels: view_model.recommendation_generator_labels,
+          enabled_generator_names: view_model.enabled_recommendation_generator_names,
+          generator_weights: view_model.recommendation_generator_weights,
           exclude_explicit: view_model.filter_explicit_content?,
           replay_seed_before_recommendation: view_model.replay_seed_before_recommendation?,
           seed_replay_interval: view_model.seed_replay_interval
         )
-        recommendation_strategy_selector.on_change do |enabled_names, exclude_explicit, replay_seed, interval|
-          handle_recommendation_settings_toggle(enabled_names, exclude_explicit, replay_seed, interval)
-        end
+        recommendation_strategy_selector.on_change { |settings| handle_recommendation_settings_toggle(settings) }
         layout.add_widget(recommendation_strategy_selector.widget)
       end
 
@@ -432,12 +433,21 @@ module YouFM
         render_status
       end
 
-      def handle_recommendation_settings_toggle(enabled_names, exclude_explicit, replay_seed, interval)
-        applied_names = view_model.update_enabled_recommendation_strategy_names(enabled_names)
-        settings_store.write_enabled_recommendation_strategy_names(applied_names)
-        applied_exclude_explicit = view_model.filter_explicit_content = exclude_explicit
+      def handle_recommendation_settings_toggle(settings)
+        applied_settings = view_model.update_recommendation_pipeline_settings(
+          seed_sources: settings.fetch(:seed_sources),
+          generators: settings.fetch(:generators),
+          generator_weights: settings.fetch(:weights)
+        )
+        settings_store.write_enabled_seed_source_names(applied_settings.fetch(:seed_sources))
+        settings_store.write_enabled_generator_names(applied_settings.fetch(:generators))
+        settings_store.write_generator_weights(applied_settings.fetch(:generator_weights))
+        applied_exclude_explicit = view_model.filter_explicit_content = settings.fetch(:exclude_explicit)
         settings_store.write_exclude_explicit_recommendations(applied_exclude_explicit)
-        replay_settings = view_model.update_seed_replay_settings(enabled: replay_seed, interval: interval)
+        replay_settings = view_model.update_seed_replay_settings(
+          enabled: settings.fetch(:replay_seed),
+          interval: settings.fetch(:interval)
+        )
         if replay_settings.is_a?(Hash)
           settings_store.write_replay_seed_before_recommendation(replay_settings.fetch(:enabled))
           settings_store.write_seed_replay_interval(replay_settings.fetch(:interval))
@@ -549,8 +559,18 @@ module YouFM
       end
 
       def apply_saved_recommendation_strategies
-        saved_names = settings_store.read_enabled_recommendation_strategy_names
-        view_model.update_enabled_recommendation_strategy_names(saved_names) if saved_names
+        saved_sources = settings_store.read_enabled_seed_source_names
+        saved_generators = settings_store.read_enabled_generator_names
+        saved_weights = settings_store.read_generator_weights
+        if saved_sources || saved_generators || saved_weights
+          view_model.update_recommendation_pipeline_settings(
+            seed_sources: saved_sources || view_model.enabled_recommendation_seed_source_names,
+            generators: saved_generators || view_model.enabled_recommendation_generator_names,
+            generator_weights: saved_weights || view_model.recommendation_generator_weights
+          )
+        elsif (saved_names = settings_store.read_enabled_recommendation_strategy_names)
+          migrate_saved_recommendation_strategies(saved_names)
+        end
         saved_exclude_explicit = settings_store.read_exclude_explicit_recommendations
         view_model.filter_explicit_content = saved_exclude_explicit unless saved_exclude_explicit.nil?
         saved_seed_replay_enabled = settings_store.read_replay_seed_before_recommendation
@@ -562,7 +582,9 @@ module YouFM
           )
         end
         recommendation_strategy_selector.apply_state(
-          enabled_names: view_model.enabled_recommendation_strategy_names,
+          enabled_seed_source_names: view_model.enabled_recommendation_seed_source_names,
+          enabled_generator_names: view_model.enabled_recommendation_generator_names,
+          generator_weights: view_model.recommendation_generator_weights,
           exclude_explicit: view_model.filter_explicit_content?,
           replay_seed_before_recommendation: view_model.replay_seed_before_recommendation?,
           seed_replay_interval: view_model.seed_replay_interval
@@ -635,11 +657,33 @@ module YouFM
       def sync_settings_controls
         numeric_settings_panel.apply_current_values
         recommendation_strategy_selector.apply_state(
-          enabled_names: view_model.enabled_recommendation_strategy_names,
+          enabled_seed_source_names: view_model.enabled_recommendation_seed_source_names,
+          enabled_generator_names: view_model.enabled_recommendation_generator_names,
+          generator_weights: view_model.recommendation_generator_weights,
           exclude_explicit: view_model.filter_explicit_content?,
           replay_seed_before_recommendation: view_model.replay_seed_before_recommendation?,
           seed_replay_interval: view_model.seed_replay_interval
         )
+      end
+
+      def migrate_saved_recommendation_strategies(saved_names)
+        names = Array(saved_names).map(&:to_sym)
+        sources = [:current_playlist]
+        sources << :recent_tracks if names.include?(:recent_tracks)
+        sources << :loved_tracks if names.include?(:loved_tracks)
+        generators = []
+        generators << :artist_similar_top_tracks if names.include?(:artist_similar_top_tracks)
+        generators << :track_similar if names.include?(:track_similar)
+        generators << :raw_seed if names.intersect?(%i[recent_tracks loved_tracks])
+        generators = [:artist_similar_top_tracks] if generators.empty?
+        applied_settings = view_model.update_recommendation_pipeline_settings(
+          seed_sources: sources,
+          generators: generators,
+          generator_weights: generators.to_h { |name| [name, 1] }
+        )
+        settings_store.write_enabled_seed_source_names(applied_settings.fetch(:seed_sources))
+        settings_store.write_enabled_generator_names(applied_settings.fetch(:generators))
+        settings_store.write_generator_weights(applied_settings.fetch(:generator_weights))
       end
 
       def render_devices(state)

@@ -20,6 +20,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
       YouFM::Services::RecommendationGenerator,
       similar_artist_pool_limit: 200,
       enabled_strategy_names: [:artist_similar_top_tracks],
+      generator_weights: {},
       exclude_explicit?: true
     )
   end
@@ -140,18 +141,31 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
   end
 
   it 'updates enabled recommendation strategies through the recommendation generator' do
-    allow(recommendation_generator).to receive(:enabled_strategy_names=) do |names|
+    allow(recommendation_generator).to receive(:enabled_seed_source_names=) do |names|
+      allow(recommendation_generator).to receive(:enabled_seed_source_names).and_return(names.map(&:to_sym))
+    end
+    allow(recommendation_generator).to receive(:enabled_generator_names=) do |names|
+      allow(recommendation_generator).to receive(:enabled_generator_names).and_return(names.map(&:to_sym))
       allow(recommendation_generator).to receive(:enabled_strategy_names).and_return(names.map(&:to_sym))
+    end
+    allow(recommendation_generator).to receive(:generator_weights=) do |weights|
+      allow(recommendation_generator).to receive(:generator_weights).and_return(weights.transform_keys(&:to_sym))
     end
 
     view_model = build_view_model
     result = view_model.update_enabled_recommendation_strategy_names(%w[artist_similar_top_tracks track_similar])
 
     expect(result).to eq(%i[artist_similar_top_tracks track_similar])
-    expect(recommendation_generator).to have_received(:enabled_strategy_names=).with(
-      %w[artist_similar_top_tracks track_similar]
+    expect(recommendation_generator).to have_received(:enabled_seed_source_names=).with([:current_playlist])
+    expect(recommendation_generator).to have_received(:enabled_generator_names=).with(
+      %i[artist_similar_top_tracks track_similar]
     )
-    expect(view_model.state.status_message).to include('Similar artist top tracks, Similar tracks')
+    expect(recommendation_generator).to have_received(:generator_weights=).with(
+      artist_similar_top_tracks: 1,
+      track_similar: 1
+    )
+    expect(view_model.state.status_message).to include('Seed sources: Current playlist / tracks list')
+    expect(view_model.state.status_message).to include('Similar artist top tracks×1, Similar tracks×1')
   end
 
   it 'updates the explicit content filter through the recommendation generator' do

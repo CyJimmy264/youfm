@@ -47,6 +47,31 @@ module YouFM
         write_payload(payload.merge('enabled_recommendation_strategy_names' => Array(names).map(&:to_s)))
       end
 
+      def read_enabled_seed_source_names
+        payload.fetch('enabled_seed_source_names', nil)
+      end
+
+      def write_enabled_seed_source_names(names)
+        write_payload(payload.merge('enabled_seed_source_names' => Array(names).map(&:to_s)))
+      end
+
+      def read_enabled_generator_names
+        payload.fetch('enabled_generator_names', nil)
+      end
+
+      def write_enabled_generator_names(names)
+        write_payload(payload.merge('enabled_generator_names' => Array(names).map(&:to_s)))
+      end
+
+      def read_generator_weights
+        payload.fetch('generator_weights', nil)
+      end
+
+      def write_generator_weights(weights)
+        normalized = weights.to_h.transform_keys(&:to_s).transform_values(&:to_i)
+        write_payload(payload.merge('generator_weights' => normalized))
+      end
+
       def read_exclude_explicit_recommendations
         payload.fetch('exclude_explicit_recommendations', nil)
       end

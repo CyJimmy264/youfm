@@ -75,12 +75,38 @@ module YouFM
         recommendation_generator.similar_artist_pool_limit = value
       end
 
+      def enabled_seed_source_names
+        recommendation_generator.enabled_seed_source_names
+      end
+
+      def enabled_seed_source_names=(names)
+        recommendation_generator.enabled_seed_source_names = names
+      end
+
       def enabled_strategy_names
         recommendation_generator.enabled_strategy_names
       end
 
       def enabled_strategy_names=(names)
         recommendation_generator.enabled_strategy_names = names
+      end
+
+      def enabled_generator_names
+        recommendation_generator.enabled_generator_names
+      end
+
+      def enabled_generator_names=(names)
+        recommendation_generator.enabled_generator_names = names
+      end
+
+      def generator_weights
+        recommendation_generator.generator_weights
+      rescue StandardError
+        {}
+      end
+
+      def generator_weights=(weights)
+        recommendation_generator.generator_weights = weights
       end
 
       def exclude_explicit?

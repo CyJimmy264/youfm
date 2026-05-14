@@ -5,11 +5,15 @@ module YouFM
     class MainViewModel
       PLAYLIST_PAGE_SIZE = 100
       DEFAULT_SEED_REPLAY_INTERVAL = Services::RecommendationCoordinator::DEFAULT_SEED_REPLAY_INTERVAL
-      RECOMMENDATION_STRATEGY_LABELS = {
-        artist_similar_top_tracks: 'Similar artist top tracks',
-        track_similar: 'Similar tracks',
+      RECOMMENDATION_SEED_SOURCE_LABELS = {
+        current_playlist: 'Current playlist / tracks list',
         recent_tracks: 'Random recent Last.fm track',
         loved_tracks: 'Random loved Last.fm track'
+      }.freeze
+      RECOMMENDATION_GENERATOR_LABELS = {
+        raw_seed: 'Raw seed',
+        artist_similar_top_tracks: 'Similar artist top tracks',
+        track_similar: 'Similar tracks'
       }.freeze
       EXCLUDE_EXPLICIT_LABEL = 'Exclude explicit content'
 
@@ -396,8 +400,33 @@ module YouFM
         numeric_settings.maximum_recommended_queue_size
       end
 
+      def recommendation_seed_source_labels
+        RECOMMENDATION_SEED_SOURCE_LABELS
+      end
+
+      def recommendation_generator_labels
+        RECOMMENDATION_GENERATOR_LABELS
+      end
+
       def recommendation_strategy_labels
-        RECOMMENDATION_STRATEGY_LABELS
+        RECOMMENDATION_GENERATOR_LABELS.merge(
+          recent_tracks: RECOMMENDATION_SEED_SOURCE_LABELS.fetch(:recent_tracks),
+          loved_tracks: RECOMMENDATION_SEED_SOURCE_LABELS.fetch(:loved_tracks)
+        )
+      end
+
+      def enabled_recommendation_seed_source_names
+        recommendation_coordinator.enabled_seed_source_names
+      end
+
+      def enabled_recommendation_generator_names
+        recommendation_coordinator.enabled_generator_names
+      end
+
+      def recommendation_generator_weights
+        recommendation_coordinator.generator_weights
+      rescue StandardError
+        {}
       end
 
       def enabled_recommendation_strategy_names
@@ -416,12 +445,35 @@ module YouFM
         recommendation_coordinator.seed_replay_interval
       end
 
+      def update_recommendation_pipeline_settings(seed_sources:, generators:, generator_weights:)
+        recommendation_coordinator.enabled_seed_source_names = seed_sources
+        recommendation_coordinator.enabled_generator_names = generators
+        recommendation_coordinator.generator_weights = generator_weights
+        update_status(recommendation_pipeline_status)
+        {
+          seed_sources: enabled_recommendation_seed_source_names,
+          generators: enabled_recommendation_generator_names,
+          generator_weights: recommendation_generator_weights
+        }
+      end
+
       def update_enabled_recommendation_strategy_names(names)
-        recommendation_coordinator.enabled_strategy_names = names
-        enabled_names = enabled_recommendation_strategy_names
-        labels = enabled_names.map { |name| RECOMMENDATION_STRATEGY_LABELS.fetch(name, name.to_s) }
-        update_status("Recommendation strategies enabled: #{labels.empty? ? 'none' : labels.join(', ')}")
-        enabled_names
+        normalized_names = Array(names).map(&:to_sym)
+        seed_sources = []
+        generator_names = RECOMMENDATION_GENERATOR_LABELS.keys - [:raw_seed]
+        seed_sources << :current_playlist if normalized_names.intersect?(generator_names)
+        seed_sources << :recent_tracks if normalized_names.include?(:recent_tracks)
+        seed_sources << :loved_tracks if normalized_names.include?(:loved_tracks)
+        generators = normalized_names & RECOMMENDATION_GENERATOR_LABELS.keys
+        generators << :raw_seed if normalized_names.intersect?(%i[recent_tracks loved_tracks])
+        seed_sources = [:current_playlist] if seed_sources.empty? && generators.any? && generators != [:raw_seed]
+        generators = [:artist_similar_top_tracks] if generators.empty? && normalized_names.any?
+        update_recommendation_pipeline_settings(
+          seed_sources: seed_sources,
+          generators: generators,
+          generator_weights: generators.to_h { |name| [name, recommendation_generator_weights.fetch(name, 1)] }
+        )
+        enabled_recommendation_strategy_names
       end
 
       # rubocop:disable Naming/PredicateMethod
@@ -489,6 +541,18 @@ module YouFM
       end
 
       private
+
+      def recommendation_pipeline_status
+        source_labels = enabled_recommendation_seed_source_names.map do |name|
+          RECOMMENDATION_SEED_SOURCE_LABELS.fetch(name, name.to_s)
+        end
+        generator_labels = enabled_recommendation_generator_names.map do |name|
+          label = RECOMMENDATION_GENERATOR_LABELS.fetch(name, name.to_s)
+          "#{label}×#{recommendation_generator_weights.fetch(name, 1)}"
+        end
+        "Seed sources: #{source_labels.empty? ? 'none' : source_labels.join(', ')}; " \
+          "Generators: #{generator_labels.empty? ? 'none' : generator_labels.join(', ')}"
+      end
 
       attr_reader :source, :recommendation_coordinator, :recommendation_seed_store, :lastfm_authenticator,
                   :playlist_tracks_loader, :recommended_queue, :numeric_settings
