@@ -25,7 +25,7 @@ module YouFM
         @last_seen_state_revision = nil
         build_window
         bind_events
-        numeric_settings_panel.load_saved_settings
+        recommendation_settings_dialog.load_saved_settings
         apply_saved_recommendation_strategies
         view_model.bootstrap
         render_full
@@ -43,8 +43,8 @@ module YouFM
                   :device_picker, :status_label, :auth_label, :lastfm_auth_label, :device_label, :now_playing_label,
                   :recommendation_seed_label, :toggle_button, :theme_button, :connect_button, :disconnect_button,
                   :connect_lastfm_button, :disconnect_lastfm_button, :tracks_panel, :next_button,
-                  :numeric_settings_panel,
-                  :recommendation_strategy_selector
+                  :recommendation_settings_dialog, :recommendation_sources_label,
+                  :recommendation_generators_label, :recommendation_modifiers_label
 
       def build_window
         @window = QWidget.new do |widget|
@@ -135,7 +135,6 @@ module YouFM
       def build_actions_row
         QHBoxLayout.new.tap do |layout|
           add_playback_controls(layout)
-          add_numeric_settings_controls(layout)
           add_recommendation_strategy_controls(layout)
           add_secondary_controls(layout)
 
@@ -160,35 +159,34 @@ module YouFM
         layout.add_widget(generate_button)
       end
 
-      def add_numeric_settings_controls(layout)
-        @numeric_settings_panel = NumericSettingsPanel.new(
+      def add_recommendation_strategy_controls(layout)
+        @recommendation_settings_dialog = RecommendationSettingsDialog.new(
           parent: window,
           view_model: view_model,
           settings_store: settings_store
         )
-        numeric_settings_panel.on_apply { handle_apply_numeric_settings }
-        layout.add_widget(numeric_settings_panel.widget)
+        layout.add_widget(build_recommendation_summary_panel)
 
-        apply_numeric_settings_button = build_button(window, 'ghost_button', 'Apply')
-        apply_numeric_settings_button.connect('clicked') { |_| handle_apply_numeric_settings }
-        layout.add_widget(apply_numeric_settings_button)
+        settings_button = build_button(window, 'ghost_button', 'Recommendation Settings...')
+        settings_button.connect('clicked') { |_| handle_open_recommendation_settings }
+        layout.add_widget(settings_button)
       end
 
-      def add_recommendation_strategy_controls(layout)
-        @recommendation_strategy_selector = RecommendationStrategySelector.new(
-          parent: window,
-          seed_source_labels: view_model.recommendation_seed_source_labels,
-          enabled_seed_source_names: view_model.enabled_recommendation_seed_source_names,
-          seed_source_weights: view_model.recommendation_seed_source_weights,
-          generator_labels: view_model.recommendation_generator_labels,
-          enabled_generator_names: view_model.enabled_recommendation_generator_names,
-          generator_weights: view_model.recommendation_generator_weights,
-          exclude_explicit: view_model.filter_explicit_content?,
-          replay_seed_before_recommendation: view_model.replay_seed_before_recommendation?,
-          seed_replay_interval: view_model.seed_replay_interval
-        )
-        recommendation_strategy_selector.on_change { |settings| handle_recommendation_settings_toggle(settings) }
-        layout.add_widget(recommendation_strategy_selector.widget)
+      def build_recommendation_summary_panel
+        QWidget.new(window).tap do |widget|
+          layout = QVBoxLayout.new(widget)
+          layout.set_contents_margins(0, 0, 0, 0)
+          layout.spacing = 2
+          @recommendation_sources_label = build_label(widget, 'status_label', '')
+          @recommendation_generators_label = build_label(widget, 'status_label', '')
+          @recommendation_modifiers_label = build_label(widget, 'status_label', '')
+          make_label_selectable(recommendation_sources_label)
+          make_label_selectable(recommendation_generators_label)
+          make_label_selectable(recommendation_modifiers_label)
+          layout.add_widget(recommendation_sources_label)
+          layout.add_widget(recommendation_generators_label)
+          layout.add_widget(recommendation_modifiers_label)
+        end
       end
 
       def add_secondary_controls(layout)
@@ -321,7 +319,6 @@ module YouFM
 
       def bind_events
         search_input.connect('returnPressed()') { handle_search }
-        numeric_settings_panel.bind_return_pressed
         tracks_panel.on_selection { |index| handle_selection(index) }
         tracks_panel.on_double_click { handle_play_selected }
         tracks_panel.on_scroll_near_bottom { handle_results_scroll }
@@ -429,35 +426,8 @@ module YouFM
         render_status
       end
 
-      def handle_apply_numeric_settings
-        numeric_settings_panel.apply_changes
-        render_status
-      end
-
-      def handle_recommendation_settings_toggle(settings)
-        applied_settings = view_model.update_recommendation_pipeline_settings(
-          seed_sources: settings.fetch(:seed_sources),
-          seed_source_weights: settings.fetch(:seed_source_weights),
-          generators: settings.fetch(:generators),
-          generator_weights: settings.fetch(:weights)
-        )
-        settings_store.write_enabled_seed_source_names(applied_settings.fetch(:seed_sources))
-        settings_store.write_seed_source_weights(applied_settings.fetch(:seed_source_weights))
-        settings_store.write_enabled_generator_names(applied_settings.fetch(:generators))
-        settings_store.write_generator_weights(applied_settings.fetch(:generator_weights))
-        applied_exclude_explicit = view_model.filter_explicit_content = settings.fetch(:exclude_explicit)
-        settings_store.write_exclude_explicit_recommendations(applied_exclude_explicit)
-        replay_settings = view_model.update_seed_replay_settings(
-          enabled: settings.fetch(:replay_seed),
-          interval: settings.fetch(:interval)
-        )
-        if replay_settings.is_a?(Hash)
-          settings_store.write_replay_seed_before_recommendation(replay_settings.fetch(:enabled))
-          settings_store.write_seed_replay_interval(replay_settings.fetch(:interval))
-        end
-        render_status
-      rescue StandardError => e
-        Services::Logger.warn("[youfm] save recommendation strategies failed: #{e.class}: #{e.message}")
+      def handle_open_recommendation_settings
+        recommendation_settings_dialog.show
       end
 
       def handle_refresh
@@ -577,15 +547,6 @@ module YouFM
             interval: (saved_seed_replay_interval || view_model.seed_replay_interval).to_s
           )
         end
-        recommendation_strategy_selector.apply_state(
-          enabled_seed_source_names: view_model.enabled_recommendation_seed_source_names,
-          seed_source_weights: view_model.recommendation_seed_source_weights,
-          enabled_generator_names: view_model.enabled_recommendation_generator_names,
-          generator_weights: view_model.recommendation_generator_weights,
-          exclude_explicit: view_model.filter_explicit_content?,
-          replay_seed_before_recommendation: view_model.replay_seed_before_recommendation?,
-          seed_replay_interval: view_model.seed_replay_interval
-        )
       rescue StandardError => e
         Services::Logger.warn("[youfm] load recommendation strategies failed: #{e.class}: #{e.message}")
       end
@@ -631,6 +592,7 @@ module YouFM
         tracks_panel.render_status(state)
         toggle_button.text = state.playing ? 'Pause' : 'Resume'
         theme_button.text = "Theme: #{theme.name.upcase}"
+        render_recommendation_pipeline_summary
         connect_button.text = state.connected ? 'Spotify Connected' : 'Connect Spotify'
         connect_button.enabled = !state.connected
         disconnect_button.enabled = state.connected
@@ -667,16 +629,7 @@ module YouFM
       end
 
       def sync_settings_controls
-        numeric_settings_panel.apply_current_values
-        recommendation_strategy_selector.apply_state(
-          enabled_seed_source_names: view_model.enabled_recommendation_seed_source_names,
-          seed_source_weights: view_model.recommendation_seed_source_weights,
-          enabled_generator_names: view_model.enabled_recommendation_generator_names,
-          generator_weights: view_model.recommendation_generator_weights,
-          exclude_explicit: view_model.filter_explicit_content?,
-          replay_seed_before_recommendation: view_model.replay_seed_before_recommendation?,
-          seed_replay_interval: view_model.seed_replay_interval
-        )
+        recommendation_settings_dialog.sync_from_view_model
       end
 
       def migrate_saved_recommendation_strategies(saved_names)
@@ -699,6 +652,25 @@ module YouFM
         settings_store.write_seed_source_weights(applied_settings.fetch(:seed_source_weights))
         settings_store.write_enabled_generator_names(applied_settings.fetch(:generators))
         settings_store.write_generator_weights(applied_settings.fetch(:generator_weights))
+      end
+
+      def render_recommendation_pipeline_summary
+        source_labels = view_model.enabled_recommendation_seed_source_names.map do |name|
+          label = view_model.recommendation_seed_source_labels.fetch(name, name.to_s)
+          "#{label}×#{view_model.recommendation_seed_source_weights.fetch(name, 1)}"
+        end
+        generator_labels = view_model.enabled_recommendation_generator_names.map do |name|
+          label = view_model.recommendation_generator_labels.fetch(name, name.to_s)
+          "#{label}×#{view_model.recommendation_generator_weights.fetch(name, 1)}"
+        end
+        modifiers = []
+        modifiers << "Replay every #{view_model.seed_replay_interval}" if view_model.replay_seed_before_recommendation?
+        modifiers << 'Exclude explicit' if view_model.filter_explicit_content?
+        recommendation_sources_label.text = "Sources: #{source_labels.empty? ? 'none' : source_labels.join(', ')}"
+        recommendation_generators_label.text =
+          "Generators: #{generator_labels.empty? ? 'none' : generator_labels.join(', ')}"
+        recommendation_modifiers_label.text =
+          "Modifiers: #{modifiers.empty? ? 'none' : modifiers.join(', ')}"
       end
 
       def render_devices(state)

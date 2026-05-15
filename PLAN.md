@@ -9,7 +9,7 @@
     - [x] Random recent Last.fm track as seed
     - [x] Random loved Last.fm track as seed
     - [x] Если выбрано несколько source'ов, выбирать один равновероятно
-    - [ ] Позже добавить веса и для source'ов
+    - [x] Добавить веса и для source'ов
   - Generators
     - [x] Отдельный блок UI `Generators:`
     - [x] Raw seed
@@ -43,6 +43,7 @@
 - Возможность удалять сиды/треки из источников (Spotify, Last.fm)
 
 - Редизайн Qt приложения
+  - Вынести `Seed sources`, `Generators`, `Queue modifiers` из главного окна в отдельное окно/диалог, открываемое кнопкой
   - Circle bg gradient как в WebUI
   - Collapsable blocks
   - Manual alignment

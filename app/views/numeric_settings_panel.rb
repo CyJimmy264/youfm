@@ -84,23 +84,16 @@ module YouFM
       def build_layout
         layout = QVBoxLayout.new(widget)
         layout.set_contents_margins(0, 0, 0, 0)
-        layout.spacing = 8
-        layout.add_widget(label)
-        layout.add_widget(inputs_widget)
+        layout.spacing = 0
+        layout.add_widget(group_box)
       end
 
-      def label
-        QLabel.new(widget).tap do |panel_label|
-          panel_label.object_name = 'status_label'
-          panel_label.text = 'Numeric Settings'
-        end
-      end
-
-      def inputs_widget
-        QWidget.new(widget).tap do |container|
+      def group_box
+        QGroupBox.new(widget).tap do |container|
+          container.title = 'Numeric Settings'
           layout = QVBoxLayout.new(container)
-          layout.set_contents_margins(0, 0, 0, 0)
-          layout.spacing = 8
+          layout.set_contents_margins(8, 10, 8, 8)
+          layout.spacing = 6
           build_input(:pool_limit, container, placeholder: 'Pool limit', value: view_model.similar_artist_pool_limit)
           build_input(
             :minimum_queue_size,

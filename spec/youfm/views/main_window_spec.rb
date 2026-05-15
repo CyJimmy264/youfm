@@ -19,29 +19,21 @@ RSpec.describe YouFM::Views::MainWindow do
         seed_replay_interval: 5
       )
       tracks_panel = instance_double(YouFM::Views::TracksPanel, rendered_current?: true)
-      numeric_settings_panel = instance_double(YouFM::Views::NumericSettingsPanel, apply_current_values: nil)
-      strategy_selector = instance_double(YouFM::Views::RecommendationStrategySelector, apply_state: nil)
+      recommendation_settings_dialog = instance_double(
+        YouFM::Views::RecommendationSettingsDialog,
+        sync_from_view_model: nil
+      )
       window = described_class.allocate
       window.instance_variable_set(:@view_model, view_model)
       window.instance_variable_set(:@tracks_panel, tracks_panel)
-      window.instance_variable_set(:@numeric_settings_panel, numeric_settings_panel)
-      window.instance_variable_set(:@recommendation_strategy_selector, strategy_selector)
+      window.instance_variable_set(:@recommendation_settings_dialog, recommendation_settings_dialog)
       window.instance_variable_set(:@render_queue, Queue.new)
       window.instance_variable_set(:@last_seen_state_revision, 1)
       allow(window).to receive(:render_status)
 
       window.send(:enqueue_external_state_render)
 
-      expect(numeric_settings_panel).to have_received(:apply_current_values)
-      expect(strategy_selector).to have_received(:apply_state).with(
-        enabled_seed_source_names: %i[current_playlist recent_tracks],
-        seed_source_weights: { current_playlist: 4, recent_tracks: 2 },
-        enabled_generator_names: %i[raw_seed track_similar],
-        generator_weights: { raw_seed: 2, track_similar: 3 },
-        exclude_explicit: false,
-        replay_seed_before_recommendation: true,
-        seed_replay_interval: 5
-      )
+      expect(recommendation_settings_dialog).to have_received(:sync_from_view_model)
       expect(window).to have_received(:render_status)
     end
   end
