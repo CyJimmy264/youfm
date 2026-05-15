@@ -106,7 +106,8 @@ module YouFM
         Services::RecommendationCoordinator.new(
           recommendation_generator: fetch(:recommendation_generator),
           source: fetch(:music_source),
-          seed_store: fetch(:recommendation_seed_store)
+          seed_store: fetch(:recommendation_seed_store),
+          spotify_client: fetch(:spotify_client)
         )
       end
       register(:main_view_model) do

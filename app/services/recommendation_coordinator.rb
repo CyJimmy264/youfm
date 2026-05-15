@@ -52,10 +52,11 @@ module YouFM
         private_class_method :not_added_message, :not_added_details
       end
 
-      def initialize(recommendation_generator:, source:, seed_store:)
+      def initialize(recommendation_generator:, source:, seed_store:, spotify_client: nil)
         @recommendation_generator = recommendation_generator
         @source = source
         @seed_store = seed_store
+        @spotify_client = spotify_client
         @jobs = []
         @generation = 0
         @worker = nil
@@ -153,7 +154,8 @@ module YouFM
 
       private
 
-      attr_reader :recommendation_generator, :source, :seed_store, :jobs, :worker, :worker_mutex, :perform_mutex
+      attr_reader :recommendation_generator, :source, :seed_store, :spotify_client, :jobs, :worker, :worker_mutex,
+                  :perform_mutex
 
       def enqueue_job(kwargs)
         worker_mutex.synchronize do
@@ -270,6 +272,7 @@ module YouFM
 
       def apply_outcome(outcome, append_track)
         enqueue_seed_track(outcome, append_track) if replay_seed_for?(outcome)
+        log_enqueue_target('generated', outcome.track)
         source.add_to_queue(outcome.track)
         seed_store.save(outcome.track.id, outcome.seed_label, label: outcome.track.display_label)
         append_track.call(outcome.track, outcome.seed_label)
@@ -283,9 +286,64 @@ module YouFM
       end
 
       def enqueue_seed_track(outcome, append_track)
-        source.add_to_queue(outcome.seed_track)
-        seed_store.save(outcome.seed_track.id, outcome.seed_label, label: outcome.seed_track.display_label)
-        append_track.call(outcome.seed_track, outcome.seed_label)
+        replay_track = resolved_seed_replay_track(outcome.seed_track)
+        return unless replay_track
+
+        log_enqueue_target('seed_replay', replay_track)
+        source.add_to_queue(replay_track)
+        seed_store.save(replay_track.id, outcome.seed_label, label: replay_track.display_label)
+        append_track.call(replay_track, outcome.seed_label)
+      end
+
+      def resolved_seed_replay_track(track)
+        return nil if track.nil?
+        return track unless track.uri.to_s.strip.empty?
+
+        resolved_track = resolve_seed_replay_track(track)
+        return resolved_track if resolved_track
+
+        Services::Logger.info(
+          '[youfm] seed replay skipped: spotify match not found ' \
+          "id=#{track.id.inspect} label=#{track.display_label.inspect}"
+        )
+        nil
+      end
+
+      def resolve_seed_replay_track(track)
+        return nil unless spotify_client
+
+        artist_name = track.artists.first.to_s
+        return nil if artist_name.empty? || track.title.to_s.empty?
+
+        replay_matcher.spotify_track_candidate_for(
+          artist_name: artist_name,
+          track_name: track.title,
+          blocked_track_ids: []
+        ).tap do |resolved_track|
+          next unless resolved_track
+
+          Services::Logger.info(
+            "[youfm] seed replay resolved: source_id=#{track.id.inspect} " \
+            "resolved_id=#{resolved_track.id.inspect} uri=#{resolved_track.uri.to_s.inspect} " \
+            "label=#{resolved_track.display_label.inspect}"
+          )
+        end
+      end
+
+      def replay_matcher
+        @replay_matcher ||= RecommendationTrackMatcher.new(
+          spotify_client: spotify_client,
+          exclude_explicit: recommendation_generator.exclude_explicit?
+        )
+      end
+
+      def log_enqueue_target(kind, track)
+        return unless track
+
+        Services::Logger.info(
+          "[youfm] enqueue target: kind=#{kind} id=#{track.id.inspect} " \
+          "uri=#{track.uri.to_s.inspect} label=#{track.display_label.inspect}"
+        )
       end
 
       def publish_outcome(outcome, update_status)

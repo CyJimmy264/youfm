@@ -17,7 +17,7 @@ module YouFM
           Services::Logger.info(
             '[youfm] recommendation generated: strategy=raw_seed ' \
             "playlist=#{playlist_name || 'unknown'} seed=#{seed_track.display_label.inspect} " \
-            "result=#{candidate.display_label.inspect}"
+            "result=#{candidate.display_label.inspect} id=#{candidate.id.inspect} uri=#{candidate.uri.to_s.inspect}"
           )
           RecommendationGenerator::Recommendation.new(track: candidate, seed_track: nil)
         end

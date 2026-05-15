@@ -61,4 +61,21 @@ RSpec.describe YouFM::Services::RecommendationTrackMatcher do
 
     expect(result).to eq(clean_match)
   end
+
+  it 'treats accented and non-accented text as equivalent' do
+    accented_match = build_track(id: 'accented', title: 'Café Lounge', artist: 'Artist')
+    matcher = described_class.new(spotify_client: spotify_client)
+
+    allow(spotify_client).to receive(:search_tracks)
+      .with('Cafe Lounge artist:Artist', limit: 10)
+      .and_return([accented_match])
+
+    result = matcher.spotify_track_candidate_for(
+      artist_name: 'Artist',
+      track_name: 'Cafe Lounge',
+      blocked_track_ids: Set.new
+    )
+
+    expect(result).to eq(accented_match)
+  end
 end

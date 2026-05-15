@@ -37,7 +37,7 @@ module YouFM
         search_limit = normalize_search_limit(limit)
         body = search_tracks_body(query, limit: search_limit)
         items = body.fetch('tracks', {}).fetch('items', [])
-        items.map { |item| build_track(item) }
+        items.map { |item| build_track(item, context: "search query=#{query.inspect}") }
       end
 
       def available_devices
@@ -49,7 +49,7 @@ module YouFM
         body, code = get_with_code('/me/player')
         return Models::PlaybackState.new(device_name: nil, track: nil, playing: false, progress_ms: 0) if code == 204
 
-        track = body['item'] ? build_track(body.fetch('item')) : nil
+        track = body['item'] ? build_track(body.fetch('item'), context: 'current_playback') : nil
         Models::PlaybackState.new(
           device_name: body.dig('device', 'name'),
           track: track,
@@ -62,7 +62,7 @@ module YouFM
         body = get('/me/player/queue')
         currently_playing_id = body.dig('currently_playing', 'id')
         queue_items = Array(body['queue']).reject { |item| item['id'] == currently_playing_id }
-        tracks = queue_items.map { |item| build_track(item) }
+        tracks = queue_items.map { |item| build_track(item, context: 'queue') }
         tracks.uniq(&:id)
       end
 
@@ -122,7 +122,10 @@ module YouFM
           next unless track_payload.is_a?(Hash)
           next if track_payload['type'].to_s == 'episode'
 
-          build_track(track_payload)
+          build_track(
+            track_payload,
+            context: "playlist_tracks_page playlist_id=#{playlist_id} offset=#{offset} limit=#{limit}"
+          )
         end
         serialized_tracks = tracks.map { |track| serialize_track(track) }
         has_more = !body['next'].to_s.empty?
@@ -233,7 +236,8 @@ module YouFM
 
       attr_reader :access_token, :base_url, :token_store, :authenticator, :playlist_cache
 
-      def build_track(item)
+      def build_track(item, context: nil)
+        log_missing_track_uri(item, context)
         Models::Track.new(
           id: item.fetch('id', ''),
           title: item.fetch('name', 'Unknown Track'),
@@ -242,6 +246,20 @@ module YouFM
           uri: item['uri'].to_s,
           duration_ms: item.fetch('duration_ms', 0),
           explicit: item['explicit'] == true
+        )
+      end
+
+      def log_missing_track_uri(item, context)
+        return unless item['uri'].to_s.strip.empty?
+
+        Services::Logger.warn(
+          "[youfm] spotify track payload missing uri: context=#{context || 'unknown'} " \
+          "id=#{item['id'].to_s.inspect} title=#{item['name'].to_s.inspect}"
+        )
+        Services::SpotifyErrorLog.append(
+          event: :missing_track_uri,
+          context: context || 'unknown',
+          payload: item
         )
       end
 

@@ -94,7 +94,8 @@ RSpec.describe YouFM::Container do
     allow(YouFM::Services::RecommendationCoordinator).to receive(:new).with(
       recommendation_generator: recommendation_generator,
       source: source,
-      seed_store: recommendation_seed_store
+      seed_store: recommendation_seed_store,
+      spotify_client: spotify_client
     ).and_return(recommendation_coordinator)
     allow(YouFM::ViewModels::MainViewModel).to receive(:new).with(
       source: source,

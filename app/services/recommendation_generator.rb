@@ -25,15 +25,20 @@ module YouFM
           recent_tracks: RecommendationSeedSources::RecentTracks.new(lastfm_client: lastfm_client, random: random),
           loved_tracks: RecommendationSeedSources::LovedTracks.new(lastfm_client: lastfm_client, random: random)
         }
+        artist_similar_top_tracks = RecommendationStrategies::ArtistSimilarTopTracks.new(
+          lastfm_client: lastfm_client,
+          matcher: matcher,
+          similar_artist_pool_limit: similar_artist_pool_limit,
+          random: random
+        )
         @generators = {
           raw_seed: RecommendationStrategies::RawSeed.new(matcher: matcher),
-          artist_similar_top_tracks: RecommendationStrategies::ArtistSimilarTopTracks.new(
+          artist_similar_top_tracks: artist_similar_top_tracks,
+          track_similar: RecommendationStrategies::TrackSimilar.new(
             lastfm_client: lastfm_client,
             matcher: matcher,
-            similar_artist_pool_limit: similar_artist_pool_limit,
-            random: random
-          ),
-          track_similar: RecommendationStrategies::TrackSimilar.new(lastfm_client: lastfm_client, matcher: matcher)
+            fallback_strategy: artist_similar_top_tracks
+          )
         }
         @random = random
         if enabled_strategy_names

@@ -86,6 +86,8 @@ RSpec.describe YouFM::Services::SpotifyClient do
     end
 
     it 'normalizes nil uri values into empty strings' do
+      allow(YouFM::Services::SpotifyErrorLog).to receive(:append)
+      allow(YouFM::Services::Logger).to receive(:warn)
       response = http_response(code: '200', body: JSON.dump(
         'tracks' => {
           'items' => [
@@ -106,6 +108,11 @@ RSpec.describe YouFM::Services::SpotifyClient do
       result = client.search_tracks('track')
 
       expect(result.first.uri).to eq('')
+      expect(YouFM::Services::SpotifyErrorLog).to have_received(:append).with(
+        event: :missing_track_uri,
+        context: 'search query="track"',
+        payload: hash_including('id' => '1', 'name' => 'Track', 'uri' => nil)
+      )
     end
   end
 

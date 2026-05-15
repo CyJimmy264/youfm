@@ -77,7 +77,7 @@ module YouFM
           Services::Logger.info(
             '[youfm] recommendation generated: strategy=artist_similar_top_tracks ' \
             "playlist=#{playlist_name || 'unknown'} seed=#{seed_track.display_label.inspect} " \
-            "result=#{candidate.display_label.inspect}"
+            "result=#{candidate.display_label.inspect} id=#{candidate.id.inspect} uri=#{candidate.uri.to_s.inspect}"
           )
         end
 

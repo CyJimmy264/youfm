@@ -69,7 +69,13 @@ module YouFM
       end
 
       def normalize_text(value)
-        value.to_s.downcase.gsub(/(remastered(\s\d+)*|the)/, ' ').gsub(/[^a-z0-9]+/, ' ').strip
+        value.to_s
+             .unicode_normalize(:nfkd)
+             .gsub(/\p{Mn}+/, '')
+             .downcase
+             .gsub(/(remastered(\s\d+)*|the)/, ' ')
+             .gsub(/[^a-z0-9]+/, ' ')
+             .strip
       end
     end
   end
