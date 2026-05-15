@@ -30,6 +30,7 @@ RSpec.describe YouFM::Container do
     lastfm_token_store = instance_double(YouFM::Services::LastfmTokenStore, load: { 'key' => 'session-key' })
     lastfm_similar_artists_cache = instance_double(YouFM::Services::LastfmSimilarArtistsCache)
     lastfm_top_tracks_cache = instance_double(YouFM::Services::LastfmTopTracksCache)
+    lastfm_user_tracks_cache = instance_double(YouFM::Services::LastfmUserTracksCache)
     browser_launcher = instance_double(YouFM::Services::BrowserLauncher)
     authenticator = instance_double(YouFM::Services::SpotifyAuthenticator)
     spotify_client = instance_double(YouFM::Services::SpotifyClient)
@@ -52,6 +53,7 @@ RSpec.describe YouFM::Container do
     allow(YouFM::Services::LastfmTokenStore).to receive(:new).and_return(lastfm_token_store)
     allow(YouFM::Services::LastfmSimilarArtistsCache).to receive(:new).and_return(lastfm_similar_artists_cache)
     allow(YouFM::Services::LastfmTopTracksCache).to receive(:new).and_return(lastfm_top_tracks_cache)
+    allow(YouFM::Services::LastfmUserTracksCache).to receive(:new).and_return(lastfm_user_tracks_cache)
     allow(YouFM::Services::BrowserLauncher).to receive(:new).and_return(browser_launcher)
     allow(YouFM::Services::SpotifyAuthenticator).to receive(:new).with(
       client_id: 'client-id',
@@ -74,7 +76,8 @@ RSpec.describe YouFM::Container do
       session_key_provider: instance_of(Proc),
       username_provider: instance_of(Proc),
       similar_artists_cache: lastfm_similar_artists_cache,
-      top_tracks_cache: lastfm_top_tracks_cache
+      top_tracks_cache: lastfm_top_tracks_cache,
+      user_tracks_cache: lastfm_user_tracks_cache
     ).and_return(lastfm_client)
     allow(YouFM::Services::LastfmAuthenticator).to receive(:new).with(
       api_key: 'lastfm-key',

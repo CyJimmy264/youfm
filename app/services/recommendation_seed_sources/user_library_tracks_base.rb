@@ -13,9 +13,8 @@ module YouFM
         end
 
         def fetch(**)
-          first_page = fetch_page(page: 1)
-          total_pages = [first_page.total_pages, 1].max
-          selected_page = total_pages == 1 ? first_page : fetch_page(page: random.rand(total_pages) + 1)
+          total_pages = [fetch_total_pages, 1].max
+          selected_page = fetch_page(page: random.rand(total_pages) + 1)
           page_info = "#{selected_page.page}/#{total_pages}"
           selected_page.tracks.shuffle(random: random).map do |library_track|
             SeedCandidate.new(
@@ -31,6 +30,10 @@ module YouFM
         attr_reader :lastfm_client, :random
 
         def fetch_page(page:)
+          raise NotImplementedError
+        end
+
+        def fetch_total_pages
           raise NotImplementedError
         end
 

@@ -189,6 +189,85 @@ RSpec.describe YouFM::Services::LastfmClient do
     end
   end
 
+  describe '#recent_tracks_total_pages' do
+    it 'uses cached metadata without hitting the network' do
+      cache = instance_double(
+        YouFM::Services::LastfmUserTracksCache,
+        fetch: { total_pages: 3019, total_tracks: 30_183 }
+      )
+      client = described_class.new(
+        api_key: 'key',
+        secret: 'secret',
+        username_provider: -> { 'RJ' },
+        user_tracks_cache: cache
+      )
+
+      expect(client.recent_tracks_total_pages).to eq(3019)
+      expect(client.recent_tracks_total_pages(per_page: 100)).to eq(302)
+    end
+
+    it 'fetches the first page and caches metadata on a cache miss' do
+      cache = instance_double(YouFM::Services::LastfmUserTracksCache, fetch: nil, save: true)
+      response = http_response(
+        code: '200',
+        body: JSON.dump(
+          'recenttracks' => {
+            'track' => [],
+            '@attr' => { 'page' => '1', 'totalPages' => '3019', 'total' => '30183' }
+          }
+        )
+      )
+      http_client = http_client_with(response)
+      client = described_class.new(
+        api_key: 'key',
+        secret: 'secret',
+        session_key_provider: -> { 'session-key' },
+        username_provider: -> { 'RJ' },
+        user_tracks_cache: cache,
+        api_http_client: http_client
+      )
+
+      expect(client.recent_tracks_total_pages).to eq(3019)
+      expect(http_client).to have_received(:request).with(
+        have_attributes(uri: have_attributes(query: include('method=user.getRecentTracks', 'page=1', 'limit=1')))
+      )
+      expect(cache).to have_received(:save).with(
+        'user.getRecentTracks',
+        'RJ',
+        total_pages: 3019,
+        total_tracks: 30_183
+      )
+    end
+
+    it 'derives total pages from total track count instead of trusting limit=1 totalPages' do
+      cache = instance_double(
+        YouFM::Services::LastfmUserTracksCache,
+        fetch: nil,
+        save: true
+      )
+      response = http_response(
+        code: '200',
+        body: JSON.dump(
+          'recenttracks' => {
+            'track' => [],
+            '@attr' => { 'page' => '1', 'totalPages' => '30183', 'total' => '30183' }
+          }
+        )
+      )
+      http_client = http_client_with(response)
+      client = described_class.new(
+        api_key: 'key',
+        secret: 'secret',
+        session_key_provider: -> { 'session-key' },
+        username_provider: -> { 'RJ' },
+        user_tracks_cache: cache,
+        api_http_client: http_client
+      )
+
+      expect(client.recent_tracks_total_pages(per_page: 10)).to eq(3019)
+    end
+  end
+
   describe '#get_loved_tracks' do
     it 'fetches loved tracks for the current authenticated user' do
       response = http_response(
@@ -225,6 +304,23 @@ RSpec.describe YouFM::Services::LastfmClient do
       expect(http_client).to have_received(:request).with(
         have_attributes(uri: have_attributes(query: include('method=user.getLovedTracks', 'user=RJ', 'page=4')))
       )
+    end
+  end
+
+  describe '#loved_tracks_total_pages' do
+    it 'uses cached metadata without hitting the network' do
+      cache = instance_double(
+        YouFM::Services::LastfmUserTracksCache,
+        fetch: { total_pages: 512, total_tracks: 5113 }
+      )
+      client = described_class.new(
+        api_key: 'key',
+        secret: 'secret',
+        username_provider: -> { 'RJ' },
+        user_tracks_cache: cache
+      )
+
+      expect(client.loved_tracks_total_pages).to eq(512)
     end
   end
 

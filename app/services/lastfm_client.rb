@@ -13,6 +13,7 @@ module YouFM
       class Error < StandardError; end
       SIMILAR_ARTISTS_CACHE_TTL = 7 * 24 * 60 * 60
       TOP_TRACKS_CACHE_TTL = 24 * 60 * 60
+      USER_TRACKS_CACHE_TTL = 24 * 60 * 60
       SIMILAR_ARTISTS_API_LIMIT = 100
       LASTFM_WEB_BASE_URL = 'https://www.last.fm'
       HTTP_OPEN_TIMEOUT = 5
@@ -22,7 +23,7 @@ module YouFM
 
       def initialize(api_key:, secret:, session_key: nil, session_key_provider: nil, username_provider: nil,
                      base_url: 'http://ws.audioscrobbler.com/2.0/', similar_artists_cache: nil,
-                     top_tracks_cache: nil, api_http_client: nil, web_http_client: nil)
+                     top_tracks_cache: nil, user_tracks_cache: nil, api_http_client: nil, web_http_client: nil)
         @api_key = api_key
         @secret = secret
         @session_key = session_key
@@ -31,6 +32,7 @@ module YouFM
         @base_url = base_url
         @similar_artists_cache = similar_artists_cache
         @top_tracks_cache = top_tracks_cache
+        @user_tracks_cache = user_tracks_cache
         @api_http_client = api_http_client ||
                            PersistentHttpClient.new(open_timeout: HTTP_OPEN_TIMEOUT, read_timeout: HTTP_READ_TIMEOUT)
         @web_http_client = web_http_client ||
@@ -42,7 +44,7 @@ module YouFM
       SimilarTrack = Struct.new(:name, :artist_name, :match)
       RecentTrack = Struct.new(:name, :artist_name, :album_name, :played_at)
       LovedTrack = Struct.new(:name, :artist_name, :album_name, :loved_at)
-      UserTracksPage = Struct.new(:tracks, :page, :total_pages)
+      UserTracksPage = Struct.new(:tracks, :page, :total_pages, :total_tracks)
 
       def auth_get_token
         get({ method: 'auth.getToken' })
@@ -112,6 +114,10 @@ module YouFM
         )
       end
 
+      def recent_tracks_total_pages(user: nil, per_page: 10)
+        user_tracks_total_pages('user.getRecentTracks', user, per_page: per_page)
+      end
+
       def get_loved_tracks(page: 1, limit: 10, user: nil)
         user_tracks_page(
           method_name: 'user.getLovedTracks',
@@ -124,9 +130,13 @@ module YouFM
         )
       end
 
+      def loved_tracks_total_pages(user: nil, per_page: 10)
+        user_tracks_total_pages('user.getLovedTracks', user, per_page: per_page)
+      end
+
       private
 
-      attr_reader :api_key, :secret, :base_url, :similar_artists_cache, :top_tracks_cache
+      attr_reader :api_key, :secret, :base_url, :similar_artists_cache, :top_tracks_cache, :user_tracks_cache
 
       def fetch_similar_artists_via_api(artist_name)
         body = get({ method: 'artist.getSimilar', artist: artist_name }, signed: true)
@@ -205,8 +215,7 @@ module YouFM
       end
 
       def user_tracks_page(method_name:, page:, limit:, user:, payload_key:, tracks_key:, build_tracks:)
-        username = user.to_s.strip
-        username = current_username if username.empty?
+        username = resolve_username(user)
         raise Error, 'Last.fm username is unavailable' if username.empty?
 
         body = get(
@@ -214,11 +223,33 @@ module YouFM
           signed: true
         )
         payload = body.fetch(payload_key, {})
+        save_user_tracks_metadata(method_name, username, payload.fetch('@attr', {}))
         UserTracksPage.new(
           tracks: build_tracks.call(Array(payload[tracks_key])),
           page: payload.fetch('@attr', {}).fetch('page', page).to_i,
-          total_pages: payload.fetch('@attr', {}).fetch('totalPages', 1).to_i
+          total_pages: payload.fetch('@attr', {}).fetch('totalPages', 1).to_i,
+          total_tracks: payload.fetch('@attr', {}).fetch('total', 0).to_i
         )
+      end
+
+      def user_tracks_total_pages(method_name, user, per_page:)
+        username = resolve_username(user)
+        raise Error, 'Last.fm username is unavailable' if username.empty?
+
+        cached_metadata = user_tracks_cache&.fetch(method_name, username, ttl: USER_TRACKS_CACHE_TTL)
+        cached_total_pages = total_pages_for(cached_metadata&.fetch(:total_tracks, 0), per_page)
+        return cached_total_pages if cached_total_pages.to_i.positive?
+
+        metadata_page = user_tracks_page(
+          method_name: method_name,
+          page: 1,
+          limit: 1,
+          user: username,
+          payload_key: method_name == 'user.getRecentTracks' ? 'recenttracks' : 'lovedtracks',
+          tracks_key: 'track',
+          build_tracks: ->(_tracks) { [] }
+        )
+        total_pages_for(metadata_page.total_tracks, per_page) || 1
       end
 
       def perform_api_request(uri)
@@ -405,6 +436,28 @@ module YouFM
 
       def current_username
         @username_provider&.call.to_s.strip
+      end
+
+      def resolve_username(user)
+        username = user.to_s.strip
+        username.empty? ? current_username : username
+      end
+
+      def save_user_tracks_metadata(method_name, username, attributes)
+        user_tracks_cache&.save(
+          method_name,
+          username,
+          total_pages: attributes.fetch('totalPages', 1).to_i,
+          total_tracks: attributes.fetch('total', 0).to_i
+        )
+      end
+
+      def total_pages_for(total_tracks, per_page)
+        track_count = total_tracks.to_i
+        page_size = per_page.to_i
+        return nil unless track_count.positive? && page_size.positive?
+
+        (track_count.to_f / page_size).ceil
       end
     end
   end

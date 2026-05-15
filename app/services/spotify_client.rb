@@ -11,6 +11,7 @@ module YouFM
       class PlaybackUnavailableError < Error; end
       class DeviceUnavailableError < Error; end
       class TimeoutError < Error; end
+      class InvalidTrackError < Error; end
 
       class RateLimitedError < Error
         attr_reader :retry_after_seconds
@@ -168,6 +169,8 @@ module YouFM
       end
 
       def play_track(track_uri)
+        raise InvalidTrackError, 'Spotify track URI is missing' if track_uri.to_s.strip.empty?
+
         put('/me/player/play', { uris: [track_uri] })
       end
 
@@ -177,6 +180,8 @@ module YouFM
       end
 
       def add_to_queue(track_uri)
+        raise InvalidTrackError, 'Spotify track URI is missing' if track_uri.to_s.strip.empty?
+
         post('/me/player/add-to-queue', uri: track_uri)
       end
 
@@ -234,7 +239,7 @@ module YouFM
           title: item.fetch('name', 'Unknown Track'),
           artists: Array(item['artists']).filter_map { |artist| artist['name'] },
           album: item.dig('album', 'name').to_s,
-          uri: item.fetch('uri', ''),
+          uri: item['uri'].to_s,
           duration_ms: item.fetch('duration_ms', 0),
           explicit: item['explicit'] == true
         )

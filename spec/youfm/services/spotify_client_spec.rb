@@ -84,6 +84,29 @@ RSpec.describe YouFM::Services::SpotifyClient do
       expect(result.length).to eq(1)
       expect(result.first.display_label).to eq('Track - Artist')
     end
+
+    it 'normalizes nil uri values into empty strings' do
+      response = http_response(code: '200', body: JSON.dump(
+        'tracks' => {
+          'items' => [
+            {
+              'id' => '1',
+              'name' => 'Track',
+              'artists' => [{ 'name' => 'Artist' }],
+              'album' => { 'name' => 'Album' },
+              'uri' => nil,
+              'duration_ms' => 123_000
+            }
+          ]
+        }
+      ))
+      http_client = http_client_with(response)
+      client = spotify_client(http_client: http_client)
+
+      result = client.search_tracks('track')
+
+      expect(result.first.uri).to eq('')
+    end
   end
 
   describe '#current_playback' do
@@ -194,6 +217,32 @@ RSpec.describe YouFM::Services::SpotifyClient do
         YouFM::Services::SpotifyClient::PlaybackUnavailableError,
         'Premium required'
       )
+    end
+
+    it 'rejects tracks without uri before calling Spotify' do
+      http_client = instance_double(YouFM::Services::PersistentHttpClient)
+      allow(http_client).to receive(:request)
+      client = spotify_client(http_client: http_client)
+
+      expect { client.play_track('') }.to raise_error(
+        YouFM::Services::SpotifyClient::InvalidTrackError,
+        'Spotify track URI is missing'
+      )
+      expect(http_client).not_to have_received(:request)
+    end
+  end
+
+  describe '#add_to_queue' do
+    it 'rejects tracks without uri before calling Spotify' do
+      http_client = instance_double(YouFM::Services::PersistentHttpClient)
+      allow(http_client).to receive(:request)
+      client = spotify_client(http_client: http_client)
+
+      expect { client.add_to_queue('') }.to raise_error(
+        YouFM::Services::SpotifyClient::InvalidTrackError,
+        'Spotify track URI is missing'
+      )
+      expect(http_client).not_to have_received(:request)
     end
   end
 
