@@ -150,6 +150,30 @@ RSpec.describe YouFM::Services::RecommendationGenerator do
     expect(generator.similar_artist_pool_limit).to eq(350)
   end
 
+  it 'falls back from artist similar top tracks to same artist when Last.fm returns no similar artists' do
+    seed_track = build_track(id: 'seed', title: 'Seed Song', artist: 'Seed Artist', uri: 'spotify:track:seed')
+    top_track = YouFM::Services::LastfmClient::TopTrack.new(name: 'Other Song', playcount: 90, listeners: 9)
+    recommended_track = build_track(id: 'recommended', title: 'Other Song', artist: 'Seed Artist',
+                                    uri: 'spotify:track:recommended')
+
+    allow(lastfm_client).to receive(:get_similar_artists).with('Seed Artist', limit: 200).and_return([])
+    allow(lastfm_client).to receive(:get_top_tracks).with('Seed Artist', period: '12month', limit: 20)
+                                                    .and_return([top_track])
+    allow(spotify_client).to receive(:search_tracks).with('Other Song artist:Seed Artist', limit: 10)
+                                                    .and_return([recommended_track])
+
+    generator = described_class.new(
+      lastfm_client: lastfm_client,
+      spotify_client: spotify_client,
+      enabled_strategy_names: [:artist_similar_top_tracks]
+    )
+    result = generator.generate_from_playlist([seed_track], excluded_track_ids: [seed_track.id], playlist_name: 'Daily')
+
+    expect(result).to eq(recommended_track)
+    expect(lastfm_client).to have_received(:get_similar_artists).with('Seed Artist', limit: 200)
+    expect(lastfm_client).to have_received(:get_top_tracks).with('Seed Artist', period: '12month', limit: 20)
+  end
+
   it 'can use track.getSimilar as an enabled recommendation strategy' do
     seed_track = build_track(id: 'seed', title: 'Seed Song', artist: 'Seed Artist', uri: 'spotify:track:seed')
     similar_track = YouFM::Services::LastfmClient::SimilarTrack.new('Similar Song', 'Similar Artist', 0.7)
@@ -210,6 +234,34 @@ RSpec.describe YouFM::Services::RecommendationGenerator do
     expect(result).to eq(recommended_track)
     expect(lastfm_client).to have_received(:get_similar_tracks).with('Seed Artist', 'Seed Song', limit: 20)
     expect(lastfm_client).to have_received(:get_similar_artists).with('Seed Artist', limit: 200)
+  end
+
+  it 'can generate another track by the same artist' do
+    seed_track = build_track(id: 'seed', title: 'Seed Song', artist: 'Seed Artist', uri: 'spotify:track:seed')
+    top_tracks = [
+      YouFM::Services::LastfmClient::TopTrack.new(name: 'Seed Song', playcount: 100, listeners: 10),
+      YouFM::Services::LastfmClient::TopTrack.new(name: 'Other Song', playcount: 90, listeners: 9)
+    ]
+    same_track = build_track(id: 'seed', title: 'Seed Song', artist: 'Seed Artist', uri: 'spotify:track:seed')
+    recommended_track = build_track(id: 'recommended', title: 'Other Song', artist: 'Seed Artist',
+                                    uri: 'spotify:track:recommended')
+
+    allow(lastfm_client).to receive(:get_top_tracks).with('Seed Artist', period: '12month', limit: 20)
+                                                    .and_return(top_tracks)
+    allow(spotify_client).to receive(:search_tracks).with('Seed Song artist:Seed Artist', limit: 10)
+                                                    .and_return([same_track])
+    allow(spotify_client).to receive(:search_tracks).with('Other Song artist:Seed Artist', limit: 10)
+                                                    .and_return([recommended_track])
+    allow(top_tracks).to receive(:shuffle).and_return(top_tracks)
+
+    generator = described_class.new(
+      lastfm_client: lastfm_client,
+      spotify_client: spotify_client,
+      enabled_strategy_names: [:same_artist]
+    )
+    result = generator.generate_from_playlist([seed_track], excluded_track_ids: [seed_track.id], playlist_name: 'Daily')
+
+    expect(result).to eq(recommended_track)
   end
 
   it 'uses the selected generator for the chosen seed source' do

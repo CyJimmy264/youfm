@@ -62,11 +62,13 @@ RSpec.describe YouFM::Services::WebUiServer do
       recommendation_generator_labels: {
         raw_seed: 'Raw seed',
         artist_similar_top_tracks: 'Similar artist top tracks',
-        track_similar: 'Similar tracks'
+        track_similar: 'Similar tracks',
+        same_artist: 'Same artist'
       },
       enabled_recommendation_seed_source_names: [:current_playlist],
       enabled_recommendation_generator_names: [:artist_similar_top_tracks],
-      recommendation_generator_weights: { raw_seed: 1, artist_similar_top_tracks: 4, track_similar: 2 },
+      recommendation_generator_weights: { raw_seed: 1, artist_similar_top_tracks: 4, track_similar: 2,
+                                          same_artist: 1 },
       filter_explicit_content?: true,
       replay_seed_before_recommendation?: true,
       seed_replay_interval: 4,
@@ -148,6 +150,7 @@ RSpec.describe YouFM::Services::WebUiServer do
     expect(html).to include('Raw seed')
     expect(html).to include('Similar artist top tracks')
     expect(html).to include('Similar tracks')
+    expect(html).to include('Same artist')
     expect(html).to include('Exclude explicit content')
     expect(html).to include('Queue Modifiers')
     expect(html).to include('Replay seed every N generated tracks')

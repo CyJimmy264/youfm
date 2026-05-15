@@ -10,7 +10,7 @@ module YouFM
       DEFAULT_GENERATOR_WEIGHT = 1
       DEFAULT_EXCLUDE_EXPLICIT = true
       SEED_SOURCE_NAMES = %i[current_playlist recent_tracks loved_tracks].freeze
-      GENERATOR_NAMES = %i[raw_seed artist_similar_top_tracks track_similar].freeze
+      GENERATOR_NAMES = %i[raw_seed artist_similar_top_tracks track_similar same_artist].freeze
       Recommendation = Struct.new(:track, :seed_track, :seed_label, keyword_init: true)
 
       def initialize(lastfm_client:, spotify_client:, similar_artist_pool_limit: DEFAULT_SIMILAR_ARTIST_POOL_LIMIT,
@@ -25,11 +25,16 @@ module YouFM
           recent_tracks: RecommendationSeedSources::RecentTracks.new(lastfm_client: lastfm_client, random: random),
           loved_tracks: RecommendationSeedSources::LovedTracks.new(lastfm_client: lastfm_client, random: random)
         }
+        same_artist = RecommendationStrategies::SameArtist.new(
+          lastfm_client: lastfm_client,
+          matcher: matcher
+        )
         artist_similar_top_tracks = RecommendationStrategies::ArtistSimilarTopTracks.new(
           lastfm_client: lastfm_client,
           matcher: matcher,
           similar_artist_pool_limit: similar_artist_pool_limit,
-          random: random
+          random: random,
+          fallback_strategy: same_artist
         )
         @generators = {
           raw_seed: RecommendationStrategies::RawSeed.new(matcher: matcher),
@@ -38,7 +43,8 @@ module YouFM
             lastfm_client: lastfm_client,
             matcher: matcher,
             fallback_strategy: artist_similar_top_tracks
-          )
+          ),
+          same_artist: same_artist
         }
         @random = random
         if enabled_strategy_names
