@@ -66,6 +66,7 @@ RSpec.describe YouFM::Services::WebUiServer do
         same_artist: 'Same artist'
       },
       enabled_recommendation_seed_source_names: [:current_playlist],
+      recommendation_seed_source_weights: { current_playlist: 4, recent_tracks: 2 },
       enabled_recommendation_generator_names: [:artist_similar_top_tracks],
       recommendation_generator_weights: { raw_seed: 1, artist_similar_top_tracks: 4, track_similar: 2,
                                           same_artist: 1 },
@@ -81,6 +82,7 @@ RSpec.describe YouFM::Services::WebUiServer do
       update_maximum_recommended_queue_size: 8,
       update_recommendation_pipeline_settings: {
         seed_sources: %i[current_playlist recent_tracks],
+        seed_source_weights: { current_playlist: 4, recent_tracks: 2 },
         generators: %i[raw_seed track_similar],
         generator_weights: { raw_seed: 2, track_similar: 5 }
       },
@@ -103,6 +105,7 @@ RSpec.describe YouFM::Services::WebUiServer do
       write_minimum_recommended_queue_size: nil,
       write_maximum_recommended_queue_size: nil,
       write_enabled_seed_source_names: nil,
+      write_seed_source_weights: nil,
       write_enabled_generator_names: nil,
       write_generator_weights: nil,
       write_exclude_explicit_recommendations: nil,
@@ -147,6 +150,7 @@ RSpec.describe YouFM::Services::WebUiServer do
     expect(html).to include('Generators')
     expect(html).to include('Current playlist / tracks list')
     expect(html).to include('Random recent Last.fm track')
+    expect(html).to include('seed_source_weights[current_playlist]')
     expect(html).to include('Raw seed')
     expect(html).to include('Similar artist top tracks')
     expect(html).to include('Similar tracks')
@@ -291,6 +295,7 @@ RSpec.describe YouFM::Services::WebUiServer do
       :apply_recommendation_strategies,
       {
         'seed_source_names' => %w[current_playlist recent_tracks],
+        'seed_source_weights' => { 'current_playlist' => '4', 'recent_tracks' => '2' },
         'generator_names' => %w[raw_seed track_similar],
         'generator_weights' => { 'raw_seed' => '2', 'track_similar' => '5' }
       }
@@ -298,10 +303,12 @@ RSpec.describe YouFM::Services::WebUiServer do
 
     expect(view_model).to have_received(:update_recommendation_pipeline_settings).with(
       seed_sources: %w[current_playlist recent_tracks],
+      seed_source_weights: { 'current_playlist' => '4', 'recent_tracks' => '2' },
       generators: %w[raw_seed track_similar],
       generator_weights: { 'raw_seed' => '2', 'track_similar' => '5' }
     )
     expect(settings_store).to have_received(:write_enabled_seed_source_names).with(%i[current_playlist recent_tracks])
+    expect(settings_store).to have_received(:write_seed_source_weights).with(current_playlist: 4, recent_tracks: 2)
     expect(settings_store).to have_received(:write_enabled_generator_names).with(%i[raw_seed track_similar])
     expect(settings_store).to have_received(:write_generator_weights).with(raw_seed: 2, track_similar: 5)
     expect(view_model).to have_received(:filter_explicit_content=).with(false)
@@ -410,6 +417,7 @@ RSpec.describe YouFM::Services::WebUiServer do
         @recommendation_seed_source_labels = {}
         @recommendation_generator_labels = {}
         @enabled_recommendation_seed_source_names = []
+        @recommendation_seed_source_weights = {}
         @enabled_recommendation_generator_names = []
         @recommendation_generator_weights = {}
         @refreshed = Queue.new
@@ -417,7 +425,8 @@ RSpec.describe YouFM::Services::WebUiServer do
       end
 
       attr_reader :recommendation_seed_source_labels, :recommendation_generator_labels,
-                  :enabled_recommendation_seed_source_names, :enabled_recommendation_generator_names,
+                  :enabled_recommendation_seed_source_names, :recommendation_seed_source_weights,
+                  :enabled_recommendation_generator_names,
                   :recommendation_generator_weights
 
       def status=(message)

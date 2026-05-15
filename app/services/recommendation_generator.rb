@@ -7,6 +7,7 @@ module YouFM
         DEFAULT_SIMILAR_ARTIST_POOL_LIMIT
       DEFAULT_ENABLED_SEED_SOURCES = %i[current_playlist].freeze
       DEFAULT_ENABLED_GENERATORS = %i[artist_similar_top_tracks].freeze
+      DEFAULT_SEED_SOURCE_WEIGHT = 1
       DEFAULT_GENERATOR_WEIGHT = 1
       DEFAULT_EXCLUDE_EXPLICIT = true
       SEED_SOURCE_NAMES = %i[current_playlist recent_tracks loved_tracks].freeze
@@ -15,6 +16,7 @@ module YouFM
 
       def initialize(lastfm_client:, spotify_client:, similar_artist_pool_limit: DEFAULT_SIMILAR_ARTIST_POOL_LIMIT,
                      enabled_seed_source_names: DEFAULT_ENABLED_SEED_SOURCES,
+                     seed_source_weights: {},
                      enabled_generator_names: DEFAULT_ENABLED_GENERATORS,
                      generator_weights: {},
                      enabled_strategy_names: nil,
@@ -53,10 +55,11 @@ module YouFM
           self.enabled_seed_source_names = enabled_seed_source_names
           self.enabled_generator_names = enabled_generator_names
         end
+        self.seed_source_weights = seed_source_weights
         self.generator_weights = generator_weights
       end
 
-      attr_reader :enabled_seed_source_names, :enabled_generator_names, :generator_weights
+      attr_reader :enabled_seed_source_names, :seed_source_weights, :enabled_generator_names, :generator_weights
 
       def enabled_strategy_names
         names = enabled_generator_names - [:raw_seed]
@@ -97,6 +100,14 @@ module YouFM
           normalized_name = name.to_s.strip.to_sym
           normalized_name if GENERATOR_NAMES.include?(normalized_name)
         end.uniq
+      end
+
+      def seed_source_weights=(weights)
+        @seed_source_weights = SEED_SOURCE_NAMES.each_with_object({}) do |name, normalized|
+          raw_weight = weights.to_h.fetch(name, weights.to_h.fetch(name.to_s, DEFAULT_SEED_SOURCE_WEIGHT))
+          parsed = Integer(raw_weight, exception: false)
+          normalized[name] = parsed&.positive? ? parsed : DEFAULT_SEED_SOURCE_WEIGHT
+        end
       end
 
       def enabled_strategy_names=(names)
@@ -168,15 +179,16 @@ module YouFM
         available_names = enabled_seed_source_names.select do |name|
           name != :current_playlist || seed_tracks.any?
         end
-        return nil if available_names.empty?
-        return available_names.first if available_names.length == 1
-
-        available_names.fetch(random.rand(available_names.length))
+        weighted_pick(available_names, seed_source_weights, DEFAULT_SEED_SOURCE_WEIGHT)
       end
 
       def pick_generator_name
-        weighted_names = enabled_generator_names.flat_map do |name|
-          [name] * generator_weights.fetch(name, DEFAULT_GENERATOR_WEIGHT)
+        weighted_pick(enabled_generator_names, generator_weights, DEFAULT_GENERATOR_WEIGHT)
+      end
+
+      def weighted_pick(names, weights, default_weight)
+        weighted_names = names.flat_map do |name|
+          [name] * weights.fetch(name, default_weight)
         end
         return nil if weighted_names.empty?
         return weighted_names.first if weighted_names.length == 1

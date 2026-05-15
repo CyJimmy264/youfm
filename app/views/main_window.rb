@@ -179,6 +179,7 @@ module YouFM
           parent: window,
           seed_source_labels: view_model.recommendation_seed_source_labels,
           enabled_seed_source_names: view_model.enabled_recommendation_seed_source_names,
+          seed_source_weights: view_model.recommendation_seed_source_weights,
           generator_labels: view_model.recommendation_generator_labels,
           enabled_generator_names: view_model.enabled_recommendation_generator_names,
           generator_weights: view_model.recommendation_generator_weights,
@@ -436,10 +437,12 @@ module YouFM
       def handle_recommendation_settings_toggle(settings)
         applied_settings = view_model.update_recommendation_pipeline_settings(
           seed_sources: settings.fetch(:seed_sources),
+          seed_source_weights: settings.fetch(:seed_source_weights),
           generators: settings.fetch(:generators),
           generator_weights: settings.fetch(:weights)
         )
         settings_store.write_enabled_seed_source_names(applied_settings.fetch(:seed_sources))
+        settings_store.write_seed_source_weights(applied_settings.fetch(:seed_source_weights))
         settings_store.write_enabled_generator_names(applied_settings.fetch(:generators))
         settings_store.write_generator_weights(applied_settings.fetch(:generator_weights))
         applied_exclude_explicit = view_model.filter_explicit_content = settings.fetch(:exclude_explicit)
@@ -559,15 +562,8 @@ module YouFM
       end
 
       def apply_saved_recommendation_strategies
-        saved_sources = settings_store.read_enabled_seed_source_names
-        saved_generators = settings_store.read_enabled_generator_names
-        saved_weights = settings_store.read_generator_weights
-        if saved_sources || saved_generators || saved_weights
-          view_model.update_recommendation_pipeline_settings(
-            seed_sources: saved_sources || view_model.enabled_recommendation_seed_source_names,
-            generators: saved_generators || view_model.enabled_recommendation_generator_names,
-            generator_weights: saved_weights || view_model.recommendation_generator_weights
-          )
+        if (saved_pipeline_settings = saved_recommendation_pipeline_settings)
+          view_model.update_recommendation_pipeline_settings(**saved_pipeline_settings)
         elsif (saved_names = settings_store.read_enabled_recommendation_strategy_names)
           migrate_saved_recommendation_strategies(saved_names)
         end
@@ -583,6 +579,7 @@ module YouFM
         end
         recommendation_strategy_selector.apply_state(
           enabled_seed_source_names: view_model.enabled_recommendation_seed_source_names,
+          seed_source_weights: view_model.recommendation_seed_source_weights,
           enabled_generator_names: view_model.enabled_recommendation_generator_names,
           generator_weights: view_model.recommendation_generator_weights,
           exclude_explicit: view_model.filter_explicit_content?,
@@ -591,6 +588,21 @@ module YouFM
         )
       rescue StandardError => e
         Services::Logger.warn("[youfm] load recommendation strategies failed: #{e.class}: #{e.message}")
+      end
+
+      def saved_recommendation_pipeline_settings
+        saved_sources = settings_store.read_enabled_seed_source_names
+        saved_source_weights = settings_store.read_seed_source_weights
+        saved_generators = settings_store.read_enabled_generator_names
+        saved_weights = settings_store.read_generator_weights
+        return nil unless saved_sources || saved_source_weights || saved_generators || saved_weights
+
+        {
+          seed_sources: saved_sources || view_model.enabled_recommendation_seed_source_names,
+          seed_source_weights: saved_source_weights || view_model.recommendation_seed_source_weights,
+          generators: saved_generators || view_model.enabled_recommendation_generator_names,
+          generator_weights: saved_weights || view_model.recommendation_generator_weights
+        }
       end
 
       def render_full
@@ -658,6 +670,7 @@ module YouFM
         numeric_settings_panel.apply_current_values
         recommendation_strategy_selector.apply_state(
           enabled_seed_source_names: view_model.enabled_recommendation_seed_source_names,
+          seed_source_weights: view_model.recommendation_seed_source_weights,
           enabled_generator_names: view_model.enabled_recommendation_generator_names,
           generator_weights: view_model.recommendation_generator_weights,
           exclude_explicit: view_model.filter_explicit_content?,
@@ -678,10 +691,12 @@ module YouFM
         generators = [:artist_similar_top_tracks] if generators.empty?
         applied_settings = view_model.update_recommendation_pipeline_settings(
           seed_sources: sources,
+          seed_source_weights: sources.to_h { |name| [name, 1] },
           generators: generators,
           generator_weights: generators.to_h { |name| [name, 1] }
         )
         settings_store.write_enabled_seed_source_names(applied_settings.fetch(:seed_sources))
+        settings_store.write_seed_source_weights(applied_settings.fetch(:seed_source_weights))
         settings_store.write_enabled_generator_names(applied_settings.fetch(:generators))
         settings_store.write_generator_weights(applied_settings.fetch(:generator_weights))
       end

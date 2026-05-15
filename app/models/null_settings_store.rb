@@ -15,6 +15,8 @@ module YouFM
       def write_enabled_recommendation_strategy_names(_names) = nil
       def read_enabled_seed_source_names = nil
       def write_enabled_seed_source_names(_names) = nil
+      def read_seed_source_weights = nil
+      def write_seed_source_weights(_weights) = nil
       def read_enabled_generator_names = nil
       def write_enabled_generator_names(_names) = nil
       def read_generator_weights = nil

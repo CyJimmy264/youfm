@@ -11,6 +11,7 @@ RSpec.describe YouFM::Views::MainWindow do
         revision: 2,
         state: state,
         enabled_recommendation_seed_source_names: %i[current_playlist recent_tracks],
+        recommendation_seed_source_weights: { current_playlist: 4, recent_tracks: 2 },
         enabled_recommendation_generator_names: %i[raw_seed track_similar],
         recommendation_generator_weights: { raw_seed: 2, track_similar: 3 },
         filter_explicit_content?: false,
@@ -34,6 +35,7 @@ RSpec.describe YouFM::Views::MainWindow do
       expect(numeric_settings_panel).to have_received(:apply_current_values)
       expect(strategy_selector).to have_received(:apply_state).with(
         enabled_seed_source_names: %i[current_playlist recent_tracks],
+        seed_source_weights: { current_playlist: 4, recent_tracks: 2 },
         enabled_generator_names: %i[raw_seed track_similar],
         generator_weights: { raw_seed: 2, track_similar: 3 },
         exclude_explicit: false,

@@ -420,6 +420,10 @@ module YouFM
         recommendation_coordinator.enabled_seed_source_names
       end
 
+      def recommendation_seed_source_weights
+        recommendation_coordinator.seed_source_weights
+      end
+
       def enabled_recommendation_generator_names
         recommendation_coordinator.enabled_generator_names
       end
@@ -446,13 +450,15 @@ module YouFM
         recommendation_coordinator.seed_replay_interval
       end
 
-      def update_recommendation_pipeline_settings(seed_sources:, generators:, generator_weights:)
+      def update_recommendation_pipeline_settings(seed_sources:, seed_source_weights:, generators:, generator_weights:)
         recommendation_coordinator.enabled_seed_source_names = seed_sources
+        recommendation_coordinator.seed_source_weights = seed_source_weights
         recommendation_coordinator.enabled_generator_names = generators
         recommendation_coordinator.generator_weights = generator_weights
         update_status(recommendation_pipeline_status)
         {
           seed_sources: enabled_recommendation_seed_source_names,
+          seed_source_weights: recommendation_seed_source_weights,
           generators: enabled_recommendation_generator_names,
           generator_weights: recommendation_generator_weights
         }
@@ -471,6 +477,7 @@ module YouFM
         generators = [:artist_similar_top_tracks] if generators.empty? && normalized_names.any?
         update_recommendation_pipeline_settings(
           seed_sources: seed_sources,
+          seed_source_weights: seed_sources.to_h { |name| [name, recommendation_seed_source_weights.fetch(name, 1)] },
           generators: generators,
           generator_weights: generators.to_h { |name| [name, recommendation_generator_weights.fetch(name, 1)] }
         )
@@ -545,7 +552,8 @@ module YouFM
 
       def recommendation_pipeline_status
         source_labels = enabled_recommendation_seed_source_names.map do |name|
-          RECOMMENDATION_SEED_SOURCE_LABELS.fetch(name, name.to_s)
+          label = RECOMMENDATION_SEED_SOURCE_LABELS.fetch(name, name.to_s)
+          "#{label}×#{recommendation_seed_source_weights.fetch(name, 1)}"
         end
         generator_labels = enabled_recommendation_generator_names.map do |name|
           label = RECOMMENDATION_GENERATOR_LABELS.fetch(name, name.to_s)

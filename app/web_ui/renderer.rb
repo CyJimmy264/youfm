@@ -9,8 +9,8 @@ module YouFM
       TEMPLATE_DIR = File.expand_path('templates', __dir__)
 
       def render(state:, pool_limit:, minimum_queue_size:, maximum_queue_size:, seed_source_labels:,
-                 enabled_seed_sources:, generator_labels:, enabled_generators:, generator_weights:,
-                 exclude_explicit:, replay_seed_before_recommendation:, seed_replay_interval:)
+                 enabled_seed_sources:, seed_source_weights:, generator_labels:, enabled_generators:,
+                 generator_weights:, exclude_explicit:, replay_seed_before_recommendation:, seed_replay_interval:)
         TemplateContext.new(
           state: state,
           pool_limit: pool_limit,
@@ -18,6 +18,7 @@ module YouFM
           maximum_queue_size: maximum_queue_size,
           seed_source_labels: seed_source_labels,
           enabled_seed_sources: enabled_seed_sources,
+          seed_source_weights: seed_source_weights,
           generator_labels: generator_labels,
           enabled_generators: enabled_generators,
           generator_weights: generator_weights,
@@ -45,6 +46,7 @@ module YouFM
 
       class TemplateContext
         def initialize(state:, pool_limit:, minimum_queue_size:, seed_source_labels:, enabled_seed_sources:,
+                       seed_source_weights:,
                        generator_labels:, enabled_generators:, generator_weights:, maximum_queue_size:,
                        exclude_explicit:, replay_seed_before_recommendation:,
                        seed_replay_interval:, stylesheet:, javascript:)
@@ -54,6 +56,7 @@ module YouFM
           @maximum_queue_size = maximum_queue_size
           @seed_source_labels = seed_source_labels
           @enabled_seed_sources = enabled_seed_sources
+          @seed_source_weights = seed_source_weights
           @generator_labels = generator_labels
           @enabled_generators = enabled_generators
           @generator_weights = generator_weights
@@ -66,6 +69,7 @@ module YouFM
 
         attr_reader(
           :state, :pool_limit, :minimum_queue_size, :maximum_queue_size, :seed_source_labels, :enabled_seed_sources,
+          :seed_source_weights,
           :generator_labels, :enabled_generators, :generator_weights,
           :exclude_explicit, :replay_seed_before_recommendation, :seed_replay_interval, :stylesheet, :javascript
         )
@@ -141,10 +145,12 @@ module YouFM
         def recommendation_strategies_form
           seed_source_checkboxes = seed_source_labels.map do |name, label|
             checked = enabled_seed_sources.include?(name) ? ' checked' : ''
+            weight = seed_source_weights.fetch(name, seed_source_weights.fetch(name.to_s, 1))
             <<~HTML
-              <label class="checkbox-label">
+              <label class="checkbox-label checkbox-inline-setting">
                 <input type="checkbox" name="seed_source_names[]" value="#{escape(name)}"#{checked}>
                 <span>#{escape(label)}</span>
+                <input name="seed_source_weights[#{escape(name)}]" value="#{escape(weight)}" class="inline-number">
               </label>
             HTML
           end.join

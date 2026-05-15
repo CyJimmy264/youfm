@@ -6,12 +6,13 @@ module YouFM
       attr_reader :widget
 
       def initialize(parent:, seed_source_labels:, enabled_seed_source_names:, generator_labels:,
-                     enabled_generator_names:, generator_weights:, exclude_explicit:,
+                     seed_source_weights:, enabled_generator_names:, generator_weights:, exclude_explicit:,
                      replay_seed_before_recommendation:, seed_replay_interval:)
         @widget = QWidget.new(parent)
         @seed_source_labels = seed_source_labels
         @generator_labels = generator_labels
         @seed_source_checkboxes = {}
+        @seed_source_weight_inputs = {}
         @generator_checkboxes = {}
         @generator_weight_inputs = {}
         @exclude_explicit_checkbox = nil
@@ -21,6 +22,7 @@ module YouFM
         build_layout
         apply_state(
           enabled_seed_source_names:,
+          seed_source_weights:,
           enabled_generator_names:,
           generator_weights:,
           exclude_explicit:,
@@ -33,13 +35,17 @@ module YouFM
         @on_change = Proc.new(&)
       end
 
-      def apply_state(enabled_seed_source_names:, enabled_generator_names:, generator_weights:, exclude_explicit:,
+      def apply_state(enabled_seed_source_names:, seed_source_weights:, enabled_generator_names:, generator_weights:,
+                      exclude_explicit:,
                       replay_seed_before_recommendation:, seed_replay_interval:)
         @applying = true
         enabled_sources = Array(enabled_seed_source_names).map(&:to_sym)
         enabled_generators = Array(enabled_generator_names).map(&:to_sym)
         seed_source_checkboxes.each do |name, checkbox|
           checkbox.checked = enabled_sources.include?(name)
+        end
+        seed_source_weight_inputs.each do |name, input|
+          input.text = seed_source_weights.fetch(name, seed_source_weights.fetch(name.to_s, 1)).to_s
         end
         generator_checkboxes.each do |name, checkbox|
           checkbox.checked = enabled_generators.include?(name)
@@ -56,7 +62,8 @@ module YouFM
 
       private
 
-      attr_reader :seed_source_labels, :generator_labels, :seed_source_checkboxes, :generator_checkboxes,
+      attr_reader :seed_source_labels, :generator_labels, :seed_source_checkboxes, :seed_source_weight_inputs,
+                  :generator_checkboxes,
                   :generator_weight_inputs, :exclude_explicit_checkbox, :replay_seed_checkbox,
                   :seed_replay_interval_input
 
@@ -85,10 +92,27 @@ module YouFM
           layout.set_contents_margins(0, 0, 0, 0)
           layout.spacing = 6
           seed_source_labels.each do |name, text|
-            checkbox = build_checkbox(text)
-            seed_source_checkboxes[name] = checkbox
-            layout.add_widget(checkbox)
+            layout.add_widget(build_seed_source_row(name, text))
           end
+        end
+      end
+
+      def build_seed_source_row(name, text)
+        QWidget.new(widget).tap do |container|
+          layout = QHBoxLayout.new(container)
+          layout.set_contents_margins(0, 0, 0, 0)
+          layout.spacing = 8
+          checkbox = build_checkbox(text)
+          seed_source_checkboxes[name] = checkbox
+          layout.add_widget(checkbox)
+          input = QLineEdit.new(container)
+          input.object_name = 'search_input'
+          input.placeholder_text = 'Weight'
+          input.maximum_width = 84
+          input.connect('returnPressed()') { emit_change }
+          seed_source_weight_inputs[name] = input
+          layout.add_widget(input)
+          layout.add_stretch(1)
         end
       end
 
@@ -168,6 +192,7 @@ module YouFM
 
         @on_change&.call(
           seed_sources: enabled_seed_source_names,
+          seed_source_weights: seed_source_weights,
           generators: enabled_generator_names,
           weights: generator_weights,
           exclude_explicit: exclude_explicit_checkbox.is_checked,
@@ -178,6 +203,10 @@ module YouFM
 
       def enabled_seed_source_names
         seed_source_checkboxes.filter_map { |name, checkbox| name if checkbox.is_checked }
+      end
+
+      def seed_source_weights
+        seed_source_weight_inputs.transform_values { |input| input.text.to_s }
       end
 
       def enabled_generator_names

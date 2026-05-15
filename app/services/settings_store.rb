@@ -55,6 +55,15 @@ module YouFM
         write_payload(payload.merge('enabled_seed_source_names' => Array(names).map(&:to_s)))
       end
 
+      def read_seed_source_weights
+        payload.fetch('seed_source_weights', nil)
+      end
+
+      def write_seed_source_weights(weights)
+        normalized = weights.to_h.transform_keys(&:to_s).transform_values(&:to_i)
+        write_payload(payload.merge('seed_source_weights' => normalized))
+      end
+
       def read_enabled_generator_names
         payload.fetch('enabled_generator_names', nil)
       end

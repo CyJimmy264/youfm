@@ -278,6 +278,9 @@ module YouFM
           enabled_seed_sources: log_render_step('enabled_recommendation_seed_source_names') do
             view_model.enabled_recommendation_seed_source_names
           end,
+          seed_source_weights: log_render_step('recommendation_seed_source_weights') do
+            view_model.recommendation_seed_source_weights
+          end,
           generator_labels: log_render_step('recommendation_generator_labels') do
             view_model.recommendation_generator_labels
           end,
@@ -425,10 +428,12 @@ module YouFM
       def apply_recommendation_strategies_action(params)
         applied_settings = view_model.update_recommendation_pipeline_settings(
           seed_sources: params.fetch('seed_source_names', []),
+          seed_source_weights: params.fetch('seed_source_weights', {}),
           generators: params.fetch('generator_names', []),
           generator_weights: params.fetch('generator_weights', {})
         )
         settings_store.write_enabled_seed_source_names(applied_settings.fetch(:seed_sources))
+        settings_store.write_seed_source_weights(applied_settings.fetch(:seed_source_weights))
         settings_store.write_enabled_generator_names(applied_settings.fetch(:generators))
         settings_store.write_generator_weights(applied_settings.fetch(:generator_weights))
         exclude_explicit = view_model.filter_explicit_content = (params['exclude_explicit'] == '1')

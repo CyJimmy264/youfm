@@ -20,6 +20,7 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
       YouFM::Services::RecommendationGenerator,
       similar_artist_pool_limit: 200,
       enabled_strategy_names: [:artist_similar_top_tracks],
+      seed_source_weights: {},
       generator_weights: {},
       exclude_explicit?: true
     )
@@ -144,9 +145,14 @@ RSpec.describe YouFM::ViewModels::MainViewModel do
     allow(recommendation_generator).to receive(:enabled_seed_source_names=) do |names|
       allow(recommendation_generator).to receive(:enabled_seed_source_names).and_return(names.map(&:to_sym))
     end
+    allow(recommendation_generator).to receive(:seed_source_weights=) do |weights|
+      allow(recommendation_generator).to receive(:seed_source_weights).and_return(weights.transform_keys(&:to_sym))
+    end
     allow(recommendation_generator).to receive(:enabled_generator_names=) do |names|
-      allow(recommendation_generator).to receive(:enabled_generator_names).and_return(names.map(&:to_sym))
-      allow(recommendation_generator).to receive(:enabled_strategy_names).and_return(names.map(&:to_sym))
+      allow(recommendation_generator).to receive_messages(
+        enabled_generator_names: names.map(&:to_sym),
+        enabled_strategy_names: names.map(&:to_sym)
+      )
     end
     allow(recommendation_generator).to receive(:generator_weights=) do |weights|
       allow(recommendation_generator).to receive(:generator_weights).and_return(weights.transform_keys(&:to_sym))

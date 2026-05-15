@@ -84,6 +84,16 @@ module YouFM
         recommendation_generator.enabled_seed_source_names = names
       end
 
+      def seed_source_weights
+        recommendation_generator.seed_source_weights
+      rescue StandardError
+        {}
+      end
+
+      def seed_source_weights=(weights)
+        recommendation_generator.seed_source_weights = weights
+      end
+
       def enabled_strategy_names
         recommendation_generator.enabled_strategy_names
       end
