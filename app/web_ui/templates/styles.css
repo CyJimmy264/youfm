@@ -39,7 +39,8 @@ h1 { margin: 0 0 20px; font-size: clamp(32px, 8vw, 64px); letter-spacing: -0.06e
 
 button,
 input,
-select {
+select,
+textarea {
   min-height: 44px;
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -56,7 +57,8 @@ button {
 button.primary { color: #1a1205; background: var(--accent); border-color: var(--accent); }
 
 input,
-select {
+select,
+textarea {
   padding: 0 12px;
   color: var(--text);
   background: #0f151d;
@@ -64,6 +66,12 @@ select {
 
 input { width: 120px; }
 select { min-width: 0; width: 100%; }
+textarea {
+  width: 100%;
+  min-height: 140px;
+  padding: 12px;
+  resize: vertical;
+}
 form { margin: 0; }
 .numeric-settings-form {
   display: flex;

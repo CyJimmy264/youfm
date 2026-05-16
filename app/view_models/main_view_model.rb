@@ -446,6 +446,12 @@ module YouFM
         recommendation_coordinator.replay_seed_before_recommendation?
       end
 
+      def recommendation_title_blacklist
+        recommendation_coordinator.title_blacklist
+      rescue StandardError
+        []
+      end
+
       def seed_replay_interval
         recommendation_coordinator.seed_replay_interval
       end
@@ -510,6 +516,18 @@ module YouFM
           enabled: replay_seed_before_recommendation?,
           interval: seed_replay_interval
         }
+      end
+
+      def update_recommendation_title_blacklist(lines)
+        recommendation_coordinator.title_blacklist = lines
+        normalized_lines = recommendation_title_blacklist
+        if normalized_lines.empty?
+          update_status('Track title blacklist cleared')
+        else
+          entry_label = normalized_lines.length == 1 ? 'entry' : 'entries'
+          update_status("Track title blacklist updated: #{normalized_lines.length} #{entry_label}")
+        end
+        normalized_lines
       end
 
       def apply_similar_artist_pool_limit(value)

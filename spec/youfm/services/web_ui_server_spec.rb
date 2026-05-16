@@ -71,6 +71,7 @@ RSpec.describe YouFM::Services::WebUiServer do
       recommendation_generator_weights: { raw_seed: 1, artist_similar_top_tracks: 4, track_similar: 2,
                                           same_artist: 1 },
       filter_explicit_content?: true,
+      recommendation_title_blacklist: ['live', 'radio edit'],
       replay_seed_before_recommendation?: true,
       seed_replay_interval: 4,
       toggle_playback: nil,
@@ -86,6 +87,7 @@ RSpec.describe YouFM::Services::WebUiServer do
         generators: %i[raw_seed track_similar],
         generator_weights: { raw_seed: 2, track_similar: 5 }
       },
+      update_recommendation_title_blacklist: ['live', 'radio edit'],
       update_seed_replay_settings: { enabled: true, interval: 4 },
       'filter_explicit_content=': true,
       select_device_index: nil,
@@ -109,6 +111,7 @@ RSpec.describe YouFM::Services::WebUiServer do
       write_enabled_generator_names: nil,
       write_generator_weights: nil,
       write_exclude_explicit_recommendations: nil,
+      write_recommendation_title_blacklist: nil,
       write_replay_seed_before_recommendation: nil,
       write_seed_replay_interval: nil
     )
@@ -159,6 +162,9 @@ RSpec.describe YouFM::Services::WebUiServer do
     expect(html).to include('Queue Modifiers')
     expect(html).to include('Replay seed every N generated tracks')
     expect(html).to include('Ignored for Raw seed')
+    expect(html).to include('Filters')
+    expect(html).to include('Track title blacklist')
+    expect(html).to include('recommendation_title_blacklist')
     expect(html).to include('seed_source_names[]')
     expect(html).to include('generator_names[]')
     expect(html).to include('generator_weights[raw_seed]')
@@ -297,7 +303,8 @@ RSpec.describe YouFM::Services::WebUiServer do
         'seed_source_names' => %w[current_playlist recent_tracks],
         'seed_source_weights' => { 'current_playlist' => '4', 'recent_tracks' => '2' },
         'generator_names' => %w[raw_seed track_similar],
-        'generator_weights' => { 'raw_seed' => '2', 'track_similar' => '5' }
+        'generator_weights' => { 'raw_seed' => '2', 'track_similar' => '5' },
+        'recommendation_title_blacklist' => "live\nradio edit"
       }
     )
 
@@ -313,6 +320,8 @@ RSpec.describe YouFM::Services::WebUiServer do
     expect(settings_store).to have_received(:write_generator_weights).with(raw_seed: 2, track_similar: 5)
     expect(view_model).to have_received(:filter_explicit_content=).with(false)
     expect(settings_store).to have_received(:write_exclude_explicit_recommendations).with(false)
+    expect(view_model).to have_received(:update_recommendation_title_blacklist).with(['live', 'radio edit'])
+    expect(settings_store).to have_received(:write_recommendation_title_blacklist).with(['live', 'radio edit'])
     expect(settings_store).to have_received(:write_replay_seed_before_recommendation).with(false)
     expect(settings_store).to have_received(:write_seed_replay_interval).with(4)
   end

@@ -30,8 +30,11 @@ RSpec.describe YouFM::Services::RecommendationGenerator do
 
     allow(lastfm_client).to receive(:get_similar_artists).with('Seed Artist', limit: 200).and_return(similar_artists)
     allow(lastfm_client).to receive(:get_top_tracks).and_return([])
-    allow(lastfm_client).to receive(:get_top_tracks).with('Similar 12', period: '12month',
-                                                                        limit: 20).and_return([top_track])
+    allow(lastfm_client).to receive(:get_top_tracks).with(
+      'Similar 12',
+      period: '12month',
+      limit: YouFM::Services::RecommendationStrategies::ArtistSimilarTopTracks::TOP_TRACK_LIMIT
+    ).and_return([top_track])
     allow(spotify_client).to receive(:search_tracks).with('Top Track artist:Similar 12',
                                                           limit: 10).and_return([recommended_track])
     allow(random).to receive(:rand).with(25).and_return(12)
@@ -53,10 +56,16 @@ RSpec.describe YouFM::Services::RecommendationGenerator do
     allow(lastfm_client).to receive(:get_similar_artists).with('Seed Artist',
                                                                limit: 200).and_return([first_similar_artist,
                                                                                        second_similar_artist])
-    allow(lastfm_client).to receive(:get_top_tracks).with('Similar Artist', period: '12month',
-                                                                            limit: 20).and_return([first_top_track])
-    allow(lastfm_client).to receive(:get_top_tracks).with('Exact Artist', period: '12month',
-                                                                          limit: 20).and_return([second_top_track])
+    allow(lastfm_client).to receive(:get_top_tracks).with(
+      'Similar Artist',
+      period: '12month',
+      limit: YouFM::Services::RecommendationStrategies::ArtistSimilarTopTracks::TOP_TRACK_LIMIT
+    ).and_return([first_top_track])
+    allow(lastfm_client).to receive(:get_top_tracks).with(
+      'Exact Artist',
+      period: '12month',
+      limit: YouFM::Services::RecommendationStrategies::ArtistSimilarTopTracks::TOP_TRACK_LIMIT
+    ).and_return([second_top_track])
     allow(spotify_client).to receive(:search_tracks).with('Song One artist:Similar Artist',
                                                           limit: 10).and_return([loose_match])
     allow(spotify_client).to receive(:search_tracks).with('Song Two artist:Exact Artist',
@@ -77,8 +86,11 @@ RSpec.describe YouFM::Services::RecommendationGenerator do
     clean_match = build_track(id: 'clean', title: 'Song One', artist: 'Similar Artist', uri: 'spotify:track:clean')
 
     allow(lastfm_client).to receive(:get_similar_artists).with('Seed Artist', limit: 200).and_return([similar_artist])
-    allow(lastfm_client).to receive(:get_top_tracks).with('Similar Artist', period: '12month',
-                                                                            limit: 20).and_return([top_track])
+    allow(lastfm_client).to receive(:get_top_tracks).with(
+      'Similar Artist',
+      period: '12month',
+      limit: YouFM::Services::RecommendationStrategies::ArtistSimilarTopTracks::TOP_TRACK_LIMIT
+    ).and_return([top_track])
     allow(spotify_client).to receive(:search_tracks).with('Song One artist:Similar Artist',
                                                           limit: 10).and_return([explicit_match, clean_match])
     allow(random).to receive(:rand).with(1).and_return(0)
@@ -107,10 +119,16 @@ RSpec.describe YouFM::Services::RecommendationGenerator do
     allow(lastfm_client).to receive(:get_similar_artists).with('Seed Artist',
                                                                limit: 200).and_return([first_similar_artist,
                                                                                        second_similar_artist])
-    allow(lastfm_client).to receive(:get_top_tracks).with('First Artist', period: '12month',
-                                                                          limit: 20).and_return(first_artist_tracks)
-    allow(lastfm_client).to receive(:get_top_tracks).with('Second Artist', period: '12month',
-                                                                           limit: 20).and_return(second_artist_tracks)
+    allow(lastfm_client).to receive(:get_top_tracks).with(
+      'First Artist',
+      period: '12month',
+      limit: YouFM::Services::RecommendationStrategies::ArtistSimilarTopTracks::TOP_TRACK_LIMIT
+    ).and_return(first_artist_tracks)
+    allow(lastfm_client).to receive(:get_top_tracks).with(
+      'Second Artist',
+      period: '12month',
+      limit: YouFM::Services::RecommendationStrategies::ArtistSimilarTopTracks::TOP_TRACK_LIMIT
+    ).and_return(second_artist_tracks)
     allow(spotify_client).to receive(:search_tracks).with('Miss One artist:First Artist',
                                                           limit: 10).and_return([loose_match])
     allow(spotify_client).to receive(:search_tracks).with('Miss Two artist:First Artist',
@@ -138,8 +156,11 @@ RSpec.describe YouFM::Services::RecommendationGenerator do
                                     uri: 'spotify:track:recommended')
 
     allow(lastfm_client).to receive(:get_similar_artists).with('Seed Artist', limit: 350).and_return([similar_artist])
-    allow(lastfm_client).to receive(:get_top_tracks).with('Similar Artist', period: '12month',
-                                                                            limit: 20).and_return([top_track])
+    allow(lastfm_client).to receive(:get_top_tracks).with(
+      'Similar Artist',
+      period: '12month',
+      limit: YouFM::Services::RecommendationStrategies::ArtistSimilarTopTracks::TOP_TRACK_LIMIT
+    ).and_return([top_track])
     allow(spotify_client).to receive(:search_tracks).with('Top Track artist:Similar Artist',
                                                           limit: 10).and_return([recommended_track])
     allow(random).to receive(:rand).with(1).and_return(0)
@@ -157,8 +178,11 @@ RSpec.describe YouFM::Services::RecommendationGenerator do
                                     uri: 'spotify:track:recommended')
 
     allow(lastfm_client).to receive(:get_similar_artists).with('Seed Artist', limit: 200).and_return([])
-    allow(lastfm_client).to receive(:get_top_tracks).with('Seed Artist', period: '12month', limit: 20)
-                                                    .and_return([top_track])
+    allow(lastfm_client).to receive(:get_top_tracks).with(
+      'Seed Artist',
+      period: '12month',
+      limit: YouFM::Services::RecommendationStrategies::SameArtist::TOP_TRACK_LIMIT
+    ).and_return([top_track])
     allow(spotify_client).to receive(:search_tracks).with('Other Song artist:Seed Artist', limit: 10)
                                                     .and_return([recommended_track])
 
@@ -171,7 +195,11 @@ RSpec.describe YouFM::Services::RecommendationGenerator do
 
     expect(result).to eq(recommended_track)
     expect(lastfm_client).to have_received(:get_similar_artists).with('Seed Artist', limit: 200)
-    expect(lastfm_client).to have_received(:get_top_tracks).with('Seed Artist', period: '12month', limit: 20)
+    expect(lastfm_client).to have_received(:get_top_tracks).with(
+      'Seed Artist',
+      period: '12month',
+      limit: YouFM::Services::RecommendationStrategies::SameArtist::TOP_TRACK_LIMIT
+    )
   end
 
   it 'can use track.getSimilar as an enabled recommendation strategy' do
@@ -215,7 +243,7 @@ RSpec.describe YouFM::Services::RecommendationGenerator do
     allow(lastfm_client).to receive(:get_top_tracks).with(
       'Fallback Artist',
       period: '12month',
-      limit: 20
+      limit: YouFM::Services::RecommendationStrategies::ArtistSimilarTopTracks::TOP_TRACK_LIMIT
     ).and_return([top_track])
     allow(spotify_client)
       .to receive(:search_tracks)
@@ -246,7 +274,11 @@ RSpec.describe YouFM::Services::RecommendationGenerator do
     recommended_track = build_track(id: 'recommended', title: 'Other Song', artist: 'Seed Artist',
                                     uri: 'spotify:track:recommended')
 
-    allow(lastfm_client).to receive(:get_top_tracks).with('Seed Artist', period: '12month', limit: 20)
+    allow(lastfm_client).to receive(:get_top_tracks).with(
+      'Seed Artist',
+      period: '12month',
+      limit: YouFM::Services::RecommendationStrategies::SameArtist::TOP_TRACK_LIMIT
+    )
                                                     .and_return(top_tracks)
     allow(spotify_client).to receive(:search_tracks).with('Seed Song artist:Seed Artist', limit: 10)
                                                     .and_return([same_track])

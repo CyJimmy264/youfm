@@ -78,4 +78,22 @@ RSpec.describe YouFM::Services::RecommendationTrackMatcher do
 
     expect(result).to eq(accented_match)
   end
+
+  it 'filters out title-blacklisted tracks' do
+    blocked_title = build_track(id: 'blocked', title: 'Song - Live', artist: 'Artist')
+    clean_match = build_track(id: 'clean', title: 'Song', artist: 'Artist')
+    matcher = described_class.new(spotify_client: spotify_client, title_blacklist: ['live'])
+
+    allow(spotify_client).to receive(:search_tracks)
+      .with('Song artist:Artist', limit: 10)
+      .and_return([blocked_title, clean_match])
+
+    result = matcher.spotify_track_candidate_for(
+      artist_name: 'Artist',
+      track_name: 'Song',
+      blocked_track_ids: Set.new
+    )
+
+    expect(result).to eq(clean_match)
+  end
 end

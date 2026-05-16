@@ -539,6 +539,8 @@ module YouFM
         end
         saved_exclude_explicit = settings_store.read_exclude_explicit_recommendations
         view_model.filter_explicit_content = saved_exclude_explicit unless saved_exclude_explicit.nil?
+        saved_title_blacklist = settings_store.read_recommendation_title_blacklist
+        view_model.update_recommendation_title_blacklist(saved_title_blacklist) if saved_title_blacklist
         saved_seed_replay_enabled = settings_store.read_replay_seed_before_recommendation
         saved_seed_replay_interval = settings_store.read_seed_replay_interval
         unless saved_seed_replay_enabled.nil? && saved_seed_replay_interval.nil?
@@ -666,6 +668,8 @@ module YouFM
         modifiers = []
         modifiers << "Replay every #{view_model.seed_replay_interval}" if view_model.replay_seed_before_recommendation?
         modifiers << 'Exclude explicit' if view_model.filter_explicit_content?
+        modifiers << "Title blacklist: #{view_model.recommendation_title_blacklist.length}" if
+          view_model.recommendation_title_blacklist.any?
         recommendation_sources_label.text = "Sources: #{source_labels.empty? ? 'none' : source_labels.join(', ')}"
         recommendation_generators_label.text =
           "Generators: #{generator_labels.empty? ? 'none' : generator_labels.join(', ')}"

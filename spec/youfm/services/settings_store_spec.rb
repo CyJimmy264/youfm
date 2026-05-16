@@ -17,6 +17,7 @@ RSpec.describe YouFM::Services::SettingsStore do
       store.write_enabled_generator_names(%i[raw_seed track_similar])
       store.write_generator_weights(raw_seed: 2, track_similar: 3)
       store.write_exclude_explicit_recommendations(true)
+      store.write_recommendation_title_blacklist(['live', 'radio edit'])
       store.write_replay_seed_before_recommendation(true)
       store.write_seed_replay_interval(4)
 
@@ -29,6 +30,7 @@ RSpec.describe YouFM::Services::SettingsStore do
       expect(reloaded_store.read_enabled_generator_names).to eq(%w[raw_seed track_similar])
       expect(reloaded_store.read_generator_weights).to eq('raw_seed' => 2, 'track_similar' => 3)
       expect(reloaded_store.read_exclude_explicit_recommendations).to be(true)
+      expect(reloaded_store.read_recommendation_title_blacklist).to eq(['live', 'radio edit'])
       expect(reloaded_store.read_replay_seed_before_recommendation).to be(true)
       expect(reloaded_store.read_seed_replay_interval).to eq(4)
     end

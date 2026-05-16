@@ -27,6 +27,8 @@ module YouFM
       def write_replay_seed_before_recommendation(_value) = nil
       def read_seed_replay_interval = nil
       def write_seed_replay_interval(_value) = nil
+      def read_recommendation_title_blacklist = nil
+      def write_recommendation_title_blacklist(_lines) = nil
     end
   end
 end

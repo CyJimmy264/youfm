@@ -105,6 +105,15 @@ module YouFM
         write_payload(payload.merge('seed_replay_interval' => value.to_i))
       end
 
+      def read_recommendation_title_blacklist
+        payload.fetch('recommendation_title_blacklist', nil)
+      end
+
+      def write_recommendation_title_blacklist(lines)
+        normalized = Array(lines).map { |line| line.to_s.strip }.reject(&:empty?).uniq
+        write_payload(payload.merge('recommendation_title_blacklist' => normalized))
+      end
+
       private
 
       attr_reader :path

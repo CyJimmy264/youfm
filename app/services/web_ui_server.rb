@@ -293,6 +293,9 @@ module YouFM
           exclude_explicit: log_render_step('exclude_explicit_recommendations') do
             view_model.filter_explicit_content?
           end,
+          title_blacklist: log_render_step('recommendation_title_blacklist') do
+            view_model.recommendation_title_blacklist
+          end,
           replay_seed_before_recommendation: log_render_step('replay_seed_before_recommendation') do
             view_model.replay_seed_before_recommendation?
           end,
@@ -438,6 +441,10 @@ module YouFM
         settings_store.write_generator_weights(applied_settings.fetch(:generator_weights))
         exclude_explicit = view_model.filter_explicit_content = (params['exclude_explicit'] == '1')
         settings_store.write_exclude_explicit_recommendations(exclude_explicit)
+        applied_title_blacklist = view_model.update_recommendation_title_blacklist(
+          params.fetch('recommendation_title_blacklist', '').to_s.lines.map(&:strip).reject(&:empty?)
+        )
+        settings_store.write_recommendation_title_blacklist(applied_title_blacklist)
         replay_settings = view_model.update_seed_replay_settings(
           enabled: params['replay_seed_before_recommendation'] == '1',
           interval: params['seed_replay_interval'].to_s

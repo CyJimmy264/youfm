@@ -80,6 +80,14 @@ module YouFM
         matcher.exclude_explicit = value == true
       end
 
+      def title_blacklist
+        matcher.title_blacklist
+      end
+
+      def title_blacklist=(lines)
+        matcher.title_blacklist = lines
+      end
+
       def similar_artist_pool_limit
         generators.fetch(:artist_similar_top_tracks).similar_artist_pool_limit
       end
@@ -163,6 +171,7 @@ module YouFM
             playlist_name: playlist_name
           )
           next unless recommendation
+          next unless recommendation_allowed?(recommendation, blocked_track_ids)
 
           recommendation.seed_label ||= candidate.seed_label
           return recommendation
@@ -184,6 +193,10 @@ module YouFM
 
       def pick_generator_name
         weighted_pick(enabled_generator_names, generator_weights, DEFAULT_GENERATOR_WEIGHT)
+      end
+
+      def recommendation_allowed?(recommendation, blocked_track_ids)
+        matcher.track_allowed?(recommendation.track, blocked_track_ids:)
       end
 
       def weighted_pick(names, weights, default_weight)

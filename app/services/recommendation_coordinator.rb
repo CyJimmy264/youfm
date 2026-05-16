@@ -128,6 +128,14 @@ module YouFM
         recommendation_generator.exclude_explicit = value
       end
 
+      def title_blacklist
+        recommendation_generator.title_blacklist
+      end
+
+      def title_blacklist=(lines)
+        recommendation_generator.title_blacklist = lines
+      end
+
       def replay_seed_before_recommendation?
         @replay_seed_before_recommendation
       end
@@ -307,7 +315,16 @@ module YouFM
 
       def resolved_seed_replay_track(track)
         return nil if track.nil?
-        return track unless track.uri.to_s.strip.empty?
+
+        unless track.uri.to_s.strip.empty?
+          return track if replay_matcher.track_allowed?(track, blocked_track_ids: [])
+
+          Services::Logger.info(
+            '[youfm] seed replay skipped: title blacklist or explicit filter blocked track ' \
+            "id=#{track.id.inspect} label=#{track.display_label.inspect}"
+          )
+          return nil
+        end
 
         resolved_track = resolve_seed_replay_track(track)
         return resolved_track if resolved_track
@@ -341,9 +358,10 @@ module YouFM
       end
 
       def replay_matcher
-        @replay_matcher ||= RecommendationTrackMatcher.new(
+        RecommendationTrackMatcher.new(
           spotify_client: spotify_client,
-          exclude_explicit: recommendation_generator.exclude_explicit?
+          exclude_explicit: recommendation_generator.exclude_explicit?,
+          title_blacklist: recommendation_generator.title_blacklist
         )
       end
 

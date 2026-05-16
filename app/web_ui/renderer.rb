@@ -10,7 +10,8 @@ module YouFM
 
       def render(state:, pool_limit:, minimum_queue_size:, maximum_queue_size:, seed_source_labels:,
                  enabled_seed_sources:, seed_source_weights:, generator_labels:, enabled_generators:,
-                 generator_weights:, exclude_explicit:, replay_seed_before_recommendation:, seed_replay_interval:)
+                 generator_weights:, exclude_explicit:, title_blacklist:, replay_seed_before_recommendation:,
+                 seed_replay_interval:)
         TemplateContext.new(
           state: state,
           pool_limit: pool_limit,
@@ -23,6 +24,7 @@ module YouFM
           enabled_generators: enabled_generators,
           generator_weights: generator_weights,
           exclude_explicit: exclude_explicit,
+          title_blacklist: title_blacklist,
           replay_seed_before_recommendation: replay_seed_before_recommendation,
           seed_replay_interval: seed_replay_interval,
           stylesheet: stylesheet,
@@ -48,7 +50,7 @@ module YouFM
         def initialize(state:, pool_limit:, minimum_queue_size:, seed_source_labels:, enabled_seed_sources:,
                        seed_source_weights:,
                        generator_labels:, enabled_generators:, generator_weights:, maximum_queue_size:,
-                       exclude_explicit:, replay_seed_before_recommendation:,
+                       exclude_explicit:, title_blacklist:, replay_seed_before_recommendation:,
                        seed_replay_interval:, stylesheet:, javascript:)
           @state = state
           @pool_limit = pool_limit
@@ -61,6 +63,7 @@ module YouFM
           @enabled_generators = enabled_generators
           @generator_weights = generator_weights
           @exclude_explicit = exclude_explicit
+          @title_blacklist = title_blacklist
           @replay_seed_before_recommendation = replay_seed_before_recommendation
           @seed_replay_interval = seed_replay_interval
           @stylesheet = stylesheet
@@ -71,7 +74,8 @@ module YouFM
           :state, :pool_limit, :minimum_queue_size, :maximum_queue_size, :seed_source_labels, :enabled_seed_sources,
           :seed_source_weights,
           :generator_labels, :enabled_generators, :generator_weights,
-          :exclude_explicit, :replay_seed_before_recommendation, :seed_replay_interval, :stylesheet, :javascript
+          :exclude_explicit, :title_blacklist, :replay_seed_before_recommendation, :seed_replay_interval,
+          :stylesheet, :javascript
         )
 
         def render(template)
@@ -167,6 +171,7 @@ module YouFM
           end.join
           explicit_checked = exclude_explicit ? ' checked' : ''
           replay_seed_checked = replay_seed_before_recommendation ? ' checked' : ''
+          title_blacklist_value = Array(title_blacklist).join("\n")
 
           <<~HTML
             <form class="strategies-form" method="post" action="/action">
@@ -191,6 +196,14 @@ module YouFM
                   <input name="seed_replay_interval" value="#{escape(seed_replay_interval)}" class="inline-number">
                 </label>
                 <div class="form-summary">Ignored for Raw seed</div>
+              </div>
+              <div class="strategies-heading">Filters</div>
+              <div class="strategy-options">
+                <label class="checkbox-label">
+                  <span>Track title blacklist</span>
+                </label>
+                <textarea name="recommendation_title_blacklist" class="settings-textarea">#{escape(title_blacklist_value)}</textarea>
+                <div class="form-summary">One word or phrase per line</div>
               </div>
               <button type="submit">Apply</button>
             </form>

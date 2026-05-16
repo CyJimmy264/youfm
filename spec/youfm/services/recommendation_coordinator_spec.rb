@@ -7,7 +7,8 @@ RSpec.describe YouFM::Services::RecommendationCoordinator do
     instance_double(
       YouFM::Services::RecommendationGenerator,
       similar_artist_pool_limit: 200,
-      exclude_explicit?: true
+      exclude_explicit?: true,
+      title_blacklist: []
     )
   end
   let(:source) { instance_double(YouFM::Services::MusicSources::SpotifySource) }

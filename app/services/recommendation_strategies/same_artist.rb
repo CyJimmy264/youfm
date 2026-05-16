@@ -4,7 +4,7 @@ module YouFM
   module Services
     module RecommendationStrategies
       class SameArtist
-        TOP_TRACK_LIMIT = 20
+        TOP_TRACK_LIMIT = ArtistSimilarTopTracks::TOP_TRACK_LIMIT
         TOP_TRACK_WINDOW_SIZE = 10
 
         def initialize(lastfm_client:, matcher:)

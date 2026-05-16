@@ -3,19 +3,19 @@
 module YouFM
   module Services
     class RecommendationTrackMatcher
-      def initialize(spotify_client:, exclude_explicit: true)
+      def initialize(spotify_client:, exclude_explicit: true, title_blacklist: [])
         @spotify_client = spotify_client
         @exclude_explicit = exclude_explicit
+        self.title_blacklist = title_blacklist
       end
 
       attr_accessor :exclude_explicit
+      attr_reader :title_blacklist
 
       def spotify_track_candidate_for(artist_name:, track_name:, blocked_track_ids:)
         query = "#{track_name} artist:#{artist_name}"
         spotify_tracks = spotify_client.search_tracks(query, limit: 10)
-        candidates = spotify_tracks.reject do |track|
-          blocked_track_ids.include?(track.id.to_s) || (exclude_explicit && track.explicit)
-        end
+        candidates = spotify_tracks.reject { |track| track_rejected?(track, blocked_track_ids) }
         scored_candidates = candidates.filter_map do |track|
           score = spotify_track_match_score(track, generated_artist_name: artist_name, generated_title: track_name)
           [track, score] if score
@@ -24,9 +24,28 @@ module YouFM
         scored_candidates.max_by { |_track, score| score }&.first
       end
 
+      def title_blacklist=(lines)
+        @title_blacklist = Array(lines).map { |line| normalize_text(line) }.reject(&:empty?).uniq
+      end
+
+      def track_allowed?(track, blocked_track_ids: [])
+        !track_rejected?(track, blocked_track_ids)
+      end
+
       private
 
       attr_reader :spotify_client
+
+      def track_rejected?(track, blocked_track_ids)
+        blocked_track_ids.include?(track.id.to_s) ||
+          (exclude_explicit && track.explicit) ||
+          title_blacklisted?(track.title)
+      end
+
+      def title_blacklisted?(title)
+        normalized_title = normalize_text(title)
+        title_blacklist.any? { |pattern| normalized_title.include?(pattern) }
+      end
 
       def spotify_track_match_score(track, generated_artist_name:, generated_title:)
         spotify_artist = normalize_text(track.artists.first)

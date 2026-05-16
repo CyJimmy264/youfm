@@ -5,6 +5,7 @@ module YouFM
     module RecommendationStrategies
       class ArtistSimilarTopTracks
         DEFAULT_SIMILAR_ARTIST_POOL_LIMIT = 200
+        TOP_TRACK_LIMIT = 100
         SIMILAR_ARTIST_WINDOW_SIZE = 10
         TOP_TRACK_WINDOW_SIZE = 7
         TOP_TRACK_ATTEMPTS_PER_ARTIST = 3
@@ -47,7 +48,7 @@ module YouFM
         attr_reader :lastfm_client, :matcher, :random, :fallback_strategy
 
         def recommendation_for_similar_artist(similar_artist, blocked_track_ids, seed_track, playlist_name)
-          top_tracks = lastfm_client.get_top_tracks(similar_artist.name, period: '12month', limit: 20)
+          top_tracks = lastfm_client.get_top_tracks(similar_artist.name, period: '12month', limit: TOP_TRACK_LIMIT)
           return nil if top_tracks.empty?
 
           top_tracks.shuffle.take([TOP_TRACK_WINDOW_SIZE, TOP_TRACK_ATTEMPTS_PER_ARTIST].min).each do |top_track|
